@@ -1,6 +1,6 @@
 // Pass/fail decisions for one view, on decoded frames: { w, h, format: "rgba" | "gray", px }.
 // The server runs these; the local demo backend runs the same code in the browser.
-import { MATCH, STEADY, analyzePixels, compare, bestOf, meanFeatures, zones, motionOf, toeState, followsCues, grayFromRGBA } from "./engine.js";
+import { MATCH, STEADY, LIVE, analyzePixels, compare, bestOf, meanFeatures, zones, motionOf, toeState, showsLife, grayFromRGBA } from "./engine.js";
 
 // Frames of one view, each steadied by the last good outline before it (frame fusion). The scanner runs this on the
 // frames it is about to send, so it knows exactly which ones will pass here.
@@ -64,20 +64,21 @@ export function decideMatch(view, frames, user) {
   };
   return { ok: true, score, ref: { w: f.w, h: f.h, gray: b64(grayFromRGBA(f.px, f.w, f.h)), mask: b64(g.mask), cx: g.cx, cy: g.cy, ex: g.ex, ey: g.ey, umin: g.umin, umax: g.umax } };
 }
-const NOT_LIVE = { ok: false, reason: "no_movement", message: "Your toes didn't follow the prompts. Keep your heel down, then curl your toes, relax them and curl them again when asked." };
-// Logging in, step 2: grey frames taken while the scanner asked for toes curled, relaxed, then curled again (each frame says which
-// cue was showing). Against the matched frame, the toes must do each in turn while the ring of floor around them stays
-// put. A photo, however it's moved, tilted or lit, changes as one flat picture, and a finger crosses the ring.
+const NOT_LIVE = { ok: false, reason: "no_movement", message: "Your toes didn't move. Keep your heel down and wiggle your toes when asked." };
+// Logging in, step 2: grey frames taken, in order, while the scanner asked for a toe wiggle. Each is compared with the
+// frame LIVE.lag before it, in the matched frame's geometry: the toes must move, on their own, while the ring of floor
+// around them stays put. A photo, however it's moved, tilted or lit, changes as one flat picture, and a finger crosses
+// the ring. `ref` still says where the foot and its toes are.
 export function decideLive(ref, frames) {
   const unb64 = s => (typeof Buffer !== "undefined" ? new Uint8Array(Buffer.from(s, "base64")) : Uint8Array.from(atob(s), ch => ch.charCodeAt(0)));
-  const R = unb64(ref.gray), geo = { ...ref, mask: unb64(ref.mask) }, zone = zones(geo);
-  const grays = frames.filter(f => f.format === "gray" && f.w === ref.w && f.h === ref.h && Number.isInteger(f.cue));
-  const states = grays.map(g => toeState(motionOf(g.px, R, g.w, g.h, zone, [ref.cx, ref.cy])));
-  if (!followsCues(states, grays.map(g => g.cue))) return NOT_LIVE;
+  const geo = { ...ref, mask: unb64(ref.mask) }, zone = zones(geo), pivot = [ref.cx, ref.cy];
+  const grays = frames.filter(f => f.format === "gray" && f.w === ref.w && f.h === ref.h);
+  const states = grays.map((g, i) => (i < LIVE.lag ? "between" : toeState(motionOf(g.px, grays[i - LIVE.lag].px, g.w, g.h, zone, pivot))));
+  if (!showsLife(states)) return NOT_LIVE;
   return { ok: true, live: true };
 }
 
-// Both steps in one request (older clients): the match, then the same cued toe check against the frame it matched.
+// Both steps in one request (older clients): the match, then the same toe check on the frames that follow.
 export function decideVerify(view, frames, user) {
   const m = decideMatch(view, frames, user);
   if (!m.ok) return m;

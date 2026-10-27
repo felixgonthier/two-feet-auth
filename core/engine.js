@@ -880,10 +880,12 @@ export function meanFeatures(list) {
 }
 export const bestOf = (templates, f) => (templates || []).reduce((m, t) => Math.max(m, compare(t, f).score), 0);
 
-// ---------- Liveness: the toes curl (or lift) and relax on cue while everything around them stays put ----------
+// ---------- Liveness: the toes wiggle while everything around them stays put ----------
 // A photo of a foot moves as one flat picture: tilted, zoomed, shifted or caught in glare, one warp plus a brightness
-// change explains all of it. Live toes don't follow that warp. So each frame is warped onto the matched frame using the
-// heel, midfoot and ball, and what's left over is measured in three places:
+// change explains all of it. Live toes don't follow that warp. So each frame is warped onto an earlier one (the frame
+// LIVE.lag before it: the toes are judged on how they move, not on how they compare with the matched frame, since a
+// hand-held phone never quite returns to the pose it matched in) using the heel, midfoot and ball, and what's left
+// over is measured in three places:
 //   rest   the heel-to-ball points the warp was fitted on (how well it fits: blur, noise)
 //   toes   the toes themselves
 //   guard  a ring of floor around the front of the foot: a finger or anything else reaching over the toes crosses it
@@ -1062,18 +1064,16 @@ export function motionOf(G0, R0, w, h, zone, pivot) {
     guard: zone.guard.length ? localRms(G, R, w, h, zone.guard, pivot, W) : 0,
   };
 }
-// What one frame shows, against the matched (toes down) frame:
-//   up       the toes changed well beyond how well the rest fits (curled, or lifted), and nothing crossed the ring around them
-//   down     the toes look as they did when matched (relaxed)
+// What one frame shows, against the frame LIVE.lag before it:
+//   up       the toes changed well beyond how well the rest fits, and nothing crossed the ring around them: they moved
+//   down     nothing moved
 //   blocked  something changed in the ring around the toes more than the toes themselves (a finger, a hand, the
 //            picture itself bending). The ring sits on the foot's edge, the sharpest thing in the picture, so on a real
 //            foot it always changes some with the toes (a shadow, a pixel of misalignment); only more than them counts.
-//   between  anything else (half-curled, blurred)
-// "down" allows for how well the rest of the foot fits: after a hand-held phone has moved a little, nothing comes back
-// to exactly what it was.
-// "up" asks the toes to change clearly more than the rest of the foot does: 2.5 times as much, once a hand-held phone
-// has settled at a fit of 7 or 8, means a curl of 20 or so, which a stiff foot still manages; a photo moves as one piece.
-export const LIVE = { excess: 5, ratio: 2.5, still: 2, stillRatio: 0.5, guard: 2.5, guardRatio: 1.4, run: 2 };
+//   between  anything else (a small twitch, blur, the whole foot drifting)
+// "up" asks the toes to change clearly more than the rest of the foot does: 2.5 times as much, so that when a hand-held
+// phone drifts (a fit of 7 or 8) a modest wiggle of 20 still counts; a photo moves as one piece, so its toes never do.
+export const LIVE = { excess: 5, ratio: 2.5, still: 2, stillRatio: 0.5, guard: 2.5, guardRatio: 1.4, lag: 2, moves: 2 };
 export function toeState(m) {
   if (!(m.rest < Infinity && m.toes < Infinity)) return "between";
   if (m.guard > LIVE.guard + LIVE.guardRatio * m.rest && m.guard > m.toes) return "blocked";
@@ -1081,15 +1081,6 @@ export function toeState(m) {
   if (m.toes - m.rest <= Math.max(LIVE.still, LIVE.stillRatio * m.rest)) return "down";
   return "between";
 }
-// The cues the scanner shows after a match, in order. Each must be answered by LIVE.run frames in a row.
-export const CUES = ["up", "down", "up"];
-// Frames (in the order taken) and the cue showing when each was taken: did the toes follow every cue, in order?
-export function followsCues(states, cues) {
-  let step = 0, run = 0;
-  for (let i = 0; i < states.length && step < CUES.length; i++) {
-    if (cues[i] !== step) { if (cues[i] > step) return false; run = 0; continue; }
-    run = states[i] === CUES[step] ? run + 1 : 0;
-    if (run >= LIVE.run) { step++; run = 0; }
-  }
-  return step === CUES.length;
-}
+// The states of a run of frames, each against the frame LIVE.lag before it: did the toes move, on their own, at least
+// LIVE.moves times? Twice is one wiggle: toes going one way, then back.
+export const showsLife = states => states.filter(s => s === "up").length >= LIVE.moves;

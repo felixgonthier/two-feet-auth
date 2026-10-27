@@ -49,7 +49,7 @@ async function waitForNext(pairingToken) {
         eyebrow: "One more step",
         title: next.purpose === "verify" ? `Now sign in to ${next.app}` : `Enroll your feet for ${next.app}`,
         chip: `For the ${next.device}`,
-        text: next.purpose === "verify" ? "One quick scan, then curl your toes, relax them and curl them again." : "The top of each foot, one at a time.",
+        text: next.purpose === "verify" ? "One quick scan, then wiggle your toes." : "The top of each foot, one at a time.",
         button: "Continue",
       }, () => scan(next.session_token, pairingToken, next.modes));
     }
@@ -60,7 +60,7 @@ try {
   const r = await fetch(`/v1/handoff/${encodeURIComponent(code)}`);
   const info = await r.json();
   if (!r.ok) throw new Error(info.message);
-  const what = info.purpose === "enroll" ? "the top of each foot, one at a time" : `the ${info.views.map(v => v.toLowerCase().replace(" of ", " of your ")).join(", then the ")}, then lift your toes when asked`;
+  const what = info.purpose === "enroll" ? "the top of each foot, one at a time" : `the ${info.views.map(v => v.toLowerCase().replace(" of ", " of your ")).join(", then the ")}, then wiggle your toes when asked`;
   ask({
     eyebrow: "Continue on your phone",
     title: `${info.purpose === "enroll" ? "Enroll your feet for" : "Sign in to"} ${info.app}`,

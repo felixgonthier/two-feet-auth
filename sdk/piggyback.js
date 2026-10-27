@@ -15,13 +15,14 @@
 // Attributes: server, session-token, autostart, source="sample" (drawn feet, for demos), sample-who="you|impostor|photo",
 //   handoff="auto|on|off" (computers offer "Use my phone" with a QR code by default), mode="phone" (set by the phone page).
 // Theme with CSS custom properties: --pb-accent, --pb-accent-ink, --pb-bg, --pb-ink, --pb-muted, --pb-good, --pb-bad, --pb-font.
-import { viewByKey, LIVE, CUES, STEADY, roiFor, GUIDE, procSize, analyzePixels, compare, zones, motionOf, toeState, grayFromRGBA } from "../core/engine.js";
+import { viewByKey, LIVE, STEADY, roiFor, GUIDE, procSize, analyzePixels, compare, zones, motionOf, toeState, grayFromRGBA } from "../core/engine.js";
 import { analyzeInOrder } from "../core/decide.js";
 import { qrEncode } from "../core/qr.js";
 
 const TICK = 130;            // ms between analysed frames
-const WIGGLE_PER_CUE = 5;    // grey frames sent per toe cue (the server takes up to 16 in all)
-const WIGGLE_TIMEOUT = 9000; // ms to follow the toe cues before sending what we have
+const WIGGLE_SEND = 12;      // grey frames sent for the toe wiggle, the last ones (the server takes up to 16)
+const WIGGLE_NEED = LIVE.moves + 1;  // toe movements seen here before sending: one more than the server asks, for safety
+const WIGGLE_TIMEOUT = 9000; // ms to wiggle before sending what we have
 const MISS_GRACE = 3;        // odd frames in a row a hold survives
 const TESTER_PARTIAL = 15000; // ms of searching after which tester mode sends what it has so far, so a try that never ends is still seen
 // One camera stream per page, shared by every scanner on it: a phone doing step after step (enroll, then the first
@@ -320,7 +321,7 @@ self.onmessage = async ({ data: m }) => {
     } else if (m.op === "reset") prior = null;
     else if (m.op === "order") r = dec.analyzeInOrder(m.frames);
     else if (m.op === "ref") ref = { R: m.R, w: m.w, h: m.h, zone: eng.zones(m.geo), pivot: m.pivot };
-    else if (m.op === "motion") { const mo = eng.motionOf(m.G, ref.R, m.w, m.h, ref.zone, ref.pivot); r = { m: mo, state: eng.toeState(mo) }; }
+    else if (m.op === "motion") { const mo = eng.motionOf(m.G, m.P || ref.R, m.w, m.h, ref.zone, ref.pivot); r = { m: mo, state: eng.toeState(mo) }; }
     self.postMessage({ id: m.id, r });
   } catch (e) { self.postMessage({ id: m.id, error: String(e) }); }
 };`;
@@ -369,7 +370,7 @@ class Analyst {
     if (m.op === "reset") { this.prior = null; return true; }
     if (m.op === "order") return analyzeInOrder(m.frames);
     if (m.op === "ref") { this.ref = { R: m.R, w: m.w, h: m.h, zone: zones(m.geo), pivot: m.pivot }; return true; }
-    if (m.op === "motion") { const mo = motionOf(m.G, this.ref.R, m.w, m.h, this.ref.zone, this.ref.pivot); return { m: mo, state: toeState(mo) }; }
+    if (m.op === "motion") { const mo = motionOf(m.G, m.P || this.ref.R, m.w, m.h, this.ref.zone, this.ref.pivot); return { m: mo, state: toeState(mo) }; }
     return true;
   }
   call(m, transfer = []) {
@@ -388,7 +389,7 @@ class Analyst {
   reset() { return this.call({ op: "reset" }); }
   order(frames) { return this.call({ op: "order", frames }); }
   setRef(ref) { return this.call({ op: "ref", ...ref }); }
-  motion(G, w, h) { return this.call({ op: "motion", G, w, h }); }
+  motion(G, w, h, P = null) { return this.call({ op: "motion", G, w, h, P }); }
   close() { this.worker?.terminate(); this.worker = null; this.inline = true; }
 }
 
@@ -517,7 +518,7 @@ export class PiggybackAuth extends HTMLElement {
       this.ui.start.textContent = `Back to ${app}`;
       this.ui.doneList.className = "done-list tips";
       this.ui.doneList.innerHTML = code === "session_failed"
-        ? ["A floor lighter or darker than your skin", "The whole foot inside the frame, toes at the top", "Once it matches, keep your heel down and follow the prompts: curl your toes, relax, curl again"].map(t => `<li>${t}</li>`).join("")
+        ? ["A floor lighter or darker than your skin", "The whole foot inside the frame, toes at the top", "Once it matches, keep your heel down and wiggle your toes"].map(t => `<li>${t}</li>`).join("")
         : "";
       this.ui.doneList.hidden = code !== "session_failed";
       this.ui.leaving.hidden = true;
@@ -602,7 +603,7 @@ export class PiggybackAuth extends HTMLElement {
   }
   frameSource() {
     const view = this.views[this.state.i];
-    if (this.sample) return this.sample.frame(view, this.state.phase === "wiggle" && CUES[this.state.wiggle.step], TICK / 1000);
+    if (this.sample) return this.sample.frame(view, this.state.phase === "wiggle" && (Math.floor((performance.now() - this.state.wiggle.started) / 500) % 2 ? "up" : "down"), TICK / 1000);
     return this.ui.video.videoWidth ? this.ui.video : null;
   }
   // The guide area of the current frame, small, for the live check. The frames that are measured and sent are cut
@@ -839,55 +840,48 @@ export class PiggybackAuth extends HTMLElement {
   }
   beginWiggle(ref) {
     const st = this.state, g = ref.full.geo;
-    st.wiggle = { w: ref.f.w, h: ref.f.h, box: ref.f.box, ball: this.footBall(g), step: 0, run: 0, blocked: 0, frames: [], seen: [], started: performance.now() };
+    st.wiggle = { w: ref.f.w, h: ref.f.h, box: ref.f.box, ball: this.footBall(g), moves: 0, blocked: 0, frames: [], seen: [], started: performance.now() };
     st.matched = false;
     st.onMatched = null;
     this.analyst.setRef({ R: grayFromRGBA(ref.f.rgba, ref.f.w, ref.f.h), w: ref.f.w, h: ref.f.h, geo: g, pivot: [g.cx, g.cy] });
     st.phase = "wiggle";
-    this.setStatus("Curl your toes", "good", 0, "Keep your heel on the floor and curl your toes under.");
+    this.setStatus("Wiggle your toes", "good", 0, "Keep your heel on the floor and wiggle your toes until the bar fills.");
     this.renderSide();
   }
-  // After a match: the toes follow cues (curl, relax, curl), judged on each full-size frame against the matched one
-  // by the same code the server runs, so what passes here passes there. Each frame is first cut around the foot where
-  // the live look finds it now (followBox), so the phone may drift; when the look fails, the last cut stands.
+  // After a match: the toes must move on their own, judged on each full-size frame against the one two before it by
+  // the same code the server runs, so what passes here passes there. Each frame is first cut around the foot where the
+  // live look finds it now (followBox), so the phone may drift; when the look fails, the last cut stands.
   tickWiggle(frame) {
     const st = this.state, w = st.wiggle;
     // Out of time: send what there is, whatever this frame would have said.
     if (performance.now() - w.started > WIGGLE_TIMEOUT) return this.endWiggle(w.w, w.h);
     const job = this.analyst.analyze(frame.small, { usePrior: true, minToes: 1, fit: LIVE_FIT, quick: true }).then(a => {
       if (a.ok) w.box = this.followBox(a, frame, w);
-      const f = this.cropAt(w.box, frame.src, [w.w, w.h]);
-      const G = grayFromRGBA(f.rgba, f.w, f.h), cue = w.step;
-      return this.analyst.motion(G, f.w, f.h).then(r => ({ G, cue, r, f }));
+      const f = this.cropAt(w.box, frame.src, [w.w, w.h]), G = grayFromRGBA(f.rgba, f.w, f.h), earlier = w.frames[w.frames.length - LIVE.lag];
+      if (!earlier) return { G, r: { m: { rest: 0, toes: 0, guard: 0 }, state: "between" }, f };
+      return this.analyst.motion(G, f.w, f.h, earlier.G).then(r => ({ G, r, f }));
     });
-    this.defer(job, x => this.toesSeen(x.G, x.cue, x.r.m, x.r.state, x.f));
+    this.defer(job, x => this.toesSeen(x.G, x.r.m, x.r.state, x.f));
   }
-  // The toe step is over (every cue answered, or time's up): send the last few frames of each cue, in order, since
-  // each cue's run is at its end. Not before the server has confirmed the match, though: until then, "Checking…".
+  // The toe step is over (enough movement, or time's up): send the last frames, in order. Not before the server has
+  // confirmed the match, though: until then, "Checking…".
   endWiggle(gw, gh) {
-    const st = this.state, w = st.wiggle, keep = [];
-    for (let c = 0; c < CUES.length; c++) keep.push(...w.frames.filter(x => x.cue === c).slice(-WIGGLE_PER_CUE));
+    const st = this.state, w = st.wiggle, keep = w.frames.slice(-WIGGLE_SEND);
     const send = () => this.upload([], keep, gw, gh);
     if (st.matched) return send();
     st.phase = "upload";
     st.onMatched = send;
     return this.setStatus("Checking…");
   }
-  toesSeen(G, cue, m, state, f) {
+  toesSeen(G, m, state, f) {
     const st = this.state, w = st.wiggle;
     if (st.phase !== "wiggle") return;
-    w.frames.push({ G, cue });
-    w.seen.push([cue, state, Math.round(m.rest * 10) / 10, Math.round(m.toes * 10) / 10, Math.round(m.guard * 10) / 10]);
+    w.frames.push({ G, cue: 0 });
+    w.seen.push([0, state, Math.round(m.rest * 10) / 10, Math.round(m.toes * 10) / 10, Math.round(m.guard * 10) / 10]);
     w.blocked = state === "blocked" ? w.blocked + 1 : 0;
-    w.run = state === CUES[w.step] ? w.run + 1 : 0;
-    if (w.run >= LIVE.run) { w.step++; w.run = 0; }
-    if (w.step >= CUES.length || performance.now() - w.started > WIGGLE_TIMEOUT) return this.endWiggle(f.w, f.h);
-    const [text, how] = [
-      ["Curl your toes", "Keep your heel on the floor and curl your toes under."],
-      ["Now relax them", "Toes flat on the floor again."],
-      ["Curl them again", "Once more: heel down, toes curled."],
-    ][w.step];
-    this.setStatus(text, "good", (w.step + w.run / LIVE.run) / CUES.length, w.blocked >= 2 ? "Something's moving near your toes. Keep hands and things out of the frame." : how);
+    if (state === "up") w.moves++;
+    if (w.moves >= WIGGLE_NEED || performance.now() - w.started > WIGGLE_TIMEOUT) return this.endWiggle(f.w, f.h);
+    this.setStatus("Wiggle your toes", "good", w.moves / WIGGLE_NEED, w.blocked >= 2 ? "Something's moving near your toes. Keep hands and things out of the frame." : "Keep your heel on the floor and wiggle your toes until the bar fills.");
   }
   // `match`: a login's still frames, sent while the toe prompts carry on; the reply only says whether the foot matched.
   async upload(stills, grays = [], gw, gh, { match = false } = {}) {
@@ -1032,7 +1026,7 @@ export class PiggybackAuth extends HTMLElement {
   async finish() {
     // A phone scanning for a computer stops here: the computer that showed the code finishes the sign-in.
     if (this.getAttribute("mode") === "phone") {
-      this.showDone("All done");
+      this.showDone("Back to your computer");
       return this.emit("piggyback-handoff-done", {});
     }
     try {
@@ -1056,8 +1050,8 @@ export class PiggybackAuth extends HTMLElement {
     const side = v => (v.side === "L" ? "Left" : "Right");
     const app = this.appName || "the app";
     const rows = this.purpose === "enroll"
-      ? [...this.views.map(v => `${side(v)} foot saved`), this.getAttribute("mode") === "phone" ? "Handed back to your computer" : "Ready for your next sign-in"]
-      : [...this.views.map(v => `${side(v)} foot matched`), "Toes moved", this.getAttribute("mode") === "phone" ? "Handed back to your computer" : `Sent to ${app}`];
+      ? [...this.views.map(v => `${side(v)} foot saved`), this.getAttribute("mode") === "phone" ? "Your computer finishes from here: check it now" : "Ready for your next sign-in"]
+      : [...this.views.map(v => `${side(v)} foot matched`), "Toes moved", this.getAttribute("mode") === "phone" ? "Your computer finishes from here: check it now" : `Sent to ${app}`];
     this.ui.doneList.className = "done-list";
     this.ui.doneList.innerHTML = rows.map(r => `<li>${r.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`)}</li>`).join("");
     this.ui.doneList.hidden = false;
@@ -1152,7 +1146,7 @@ export class PiggybackAuth extends HTMLElement {
     }
     if (st.phase === "done") {
       if (phone) return ["You can put your phone down", "Your computer is finishing the sign-in."];
-      if (enroll) return ["You're all set", "Next time you sign in, show one foot, then curl your toes when asked."];
+      if (enroll) return ["You're all set", "Next time you sign in, show one foot, then wiggle your toes when asked."];
       return ["Welcome back", "Your feet checked out. Nice toes."];
     }
     if (st.phase === "handoff") {
@@ -1162,7 +1156,7 @@ export class PiggybackAuth extends HTMLElement {
     }
     if (view) return [view.title, view.how];
     return enroll ? ["Enroll your feet", "The camera looks at the top of each foot, one after the other. Socks off, on a plain floor."]
-      : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and curl your toes when asked.`];
+      : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and wiggle your toes when asked.`];
   }
   renderSide() {
     const st = this.state, view = st.running ? this.views[st.i] : null;
@@ -1236,10 +1230,10 @@ export class PiggybackAuth extends HTMLElement {
     if (this.qr) this.drawQr(g, w, h);
     else if (st.phase === "handoff") this.drawFootGuide(g, gx, h * 0.06, gw, h * 0.88, this.views[Math.max(0, this.views.findIndex(v => !v.ok))], still ? 0 : t);
     else if (!a && (st.running || !src)) this.drawFootGuide(g, gx, h * 0.06, gw, h * 0.88, this.views[st.i], st.running && !still ? t : 0);
-    // Where to lift: soft pink ripples at the toes while the cue says up.
+    // Where to wiggle: soft pink ripples at the toes during the toe step.
     // debug: the outline the scanner sees, and a dot where it thinks the toes are.
     if (this.hasAttribute("debug") && a?.geo && map) this.drawOutline(g, a.geo, map);
-    const geo = st.phase === "wiggle" && CUES[st.wiggle.step] === "up" ? a?.geo : null;
+    const geo = st.phase === "wiggle" ? a?.geo : null;
     if (geo && map) {
       const [px, py, k] = map(geo), len = geo.umax - geo.umin, u = geo.umin + 0.9 * len;
       const cx = px(geo.cx + u * geo.ex), cy = py(geo.cy + u * geo.ey), base = len * k * 0.2;

@@ -17,7 +17,7 @@ Piggyback is a second factor. Your login flow checks the password (or SSO) as us
 ## What the user does
 
 - **Enroll** (once): the top of each foot. Each is saved after a couple of seconds held still, then shown back so the user can redo it before moving on. (Soles were dropped: a sole held up to a camera turns and tilts too much to match reliably.)
-- **Verify** (each login): one foot, picked at random by the server, must match; then the scanner prompts for toes curled, relaxed, then curled again while the heel stays down. Unpredictable views stop someone preparing the right photo; the prompts stop photos however they're moved (see [Liveness](#liveness)). Register a client with `--verify-views 2` to ask for both.
+- **Verify** (each login): one foot, picked at random by the server, must match; then the scanner asks for a toe wiggle while the heel stays down. Unpredictable views stop someone preparing the right photo; the prompts stop photos however they're moved (see [Liveness](#liveness)). Register a client with `--verify-views 2` to ask for both.
 
 ## On a computer: continue on the phone
 
@@ -204,7 +204,7 @@ Floor in shadow (a darker version of the floor's own colour) is offered as floor
 
 ## Liveness
 
-After a match, the scanner prompts: **curl your toes**, **relax them**, **curl them again** (lifting them works too), moving to the next prompt once two frames in a row show the toes doing it. Each frame is cut around the foot where the scanner sees it at that moment, so the phone may drift after the match. The server re-checks the same frames:
+After a match, the scanner asks for a **toe wiggle** and watches until the toes have moved on their own a few times (each frame is compared with the one two before it, in the matched frame's geometry, so the phone may drift and nothing has to return to the matched pose). Each frame is cut around the foot where the scanner sees it at that moment. The server re-checks the same frames:
 
 - Each frame is lined up with the matched frame using the heel, midfoot and ball: an affine warp (shift, turn, zoom, tilt) plus a brightness change, fitted by Gauss–Newton after a coarse search. Both are smoothed first so fine detail doesn't count as change.
 - What the warp can't explain is measured on the toes, on the heel-to-ball points it was fitted on, and on a ring of floor around the front of the foot. Toes *up* means the toes changed well beyond how well the rest fits (`LIVE` in `core/engine.js`); *down* means they look as they did when matched; anything in the ring makes the frame *blocked*.
@@ -238,6 +238,6 @@ Setting up the server itself (Docker or a plain Linux server, https, backups) is
 - **Keys:** pass `PIGGYBACK_DATA_KEY` from your KMS or secret store, and back up `DATA_DIR/keys.json` (signing key). Rotating the signing key means publishing both keys in the JWKS for a while; not automated yet.
 - **More than one instance:** sessions, codes, phone links and OpenID Connect requests live in memory by default. Set `PIGGYBACK_REDIS_URL=redis://…` (or `rediss://` for TLS; Redis 6.2+) and every instance shares them, so a computer and its phone can land on different servers. The Redis client is built in. Registered apps and foot templates are files in `DATA_DIR`: put it on shared storage, or one volume per region. Templates are files; move them to a database for multiple instances.
 - **Accuracy is barely measured on real feet.** Thresholds were tuned on drawn sample feet and then checked on a few real scans from two people; FootNet is trained on drawn feet only, and retraining it on consented real photos is the biggest single improvement available. Save scans with the scanner's `?debug` mode (or collect them with tester mode) and replay them with `node scripts/eval-scans.mjs scan.json …`, which reports every session's score against every other, to measure false-accept and false-reject rates before relying on it. Known weak spot: a pale, brightly lit foot on a pale floor, where the lit side of the foot is the colour of the floor and part of it is left out of the outline.
-- **Liveness stops photos, not videos.** A recording of the user curling their toes, played back in time with the prompts, could pass. Next: prompts the server randomises per session (how many curls, which toes).
+- **Liveness stops photos, not videos.** A recording of the user wiggling their toes could pass. Next: cues the server randomises per session (when to wiggle, which toes).
 - **Biometric law:** foot templates are biometric data. Get opt-in consent at enrollment, state retention, honour deletion (`DELETE /v1/users/:id`). In Canada that's PIPEDA, and Quebec's Law 25 requires notifying the CAI before deploying biometric verification; Illinois BIPA if you have US users.
 - **Always keep another factor available** (passkey, authenticator app) for people who can't or won't use their feet.

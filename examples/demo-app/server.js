@@ -139,7 +139,7 @@ http.createServer(async (req, res) => {
       <label class="pb-label">Username<input class="pb-input" name="username" placeholder="Enter anything" autocomplete="username" required></label>
       <label class="pb-label">Password<input class="pb-input" name="password" type="password" placeholder="Enter demo" autocomplete="current-password" required></label>
       ${url.searchParams.has("debug") ? `<input type="hidden" name="debug" value="1"><p class="pb-chip dot">Debug mode</p>` : ""}
-      ${url.searchParams.has("tester") ? `<input type="hidden" name="tester" value="1"><p class="pb-chip dot">Tester mode: your scans help improve foot detection</p>` : ""}
+      ${url.searchParams.has("tester") ? `<input type="hidden" name="tester" value="1"><p class="pb-chip dot">Tester mode</p>` : ""}
       ${url.searchParams.get("sample") ? `<input type="hidden" name="sample" value="${esc(url.searchParams.get("sample"))}"><p class="pb-chip dot">Using sample feet: ${esc(url.searchParams.get("sample"))}</p>` : ""}
       <button class="pb-btn block">Continue</button></form>`));
 

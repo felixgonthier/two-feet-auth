@@ -45,25 +45,7 @@ function releaseCamera() {
   camera.stream?.getTracks().forEach(t => { t.enabled = false; });
   camera.idle = setTimeout(() => { camera.stream?.getTracks().forEach(t => t.stop()); camera.stream = null; }, CAMERA_KEEP);
 }
-// Whether the browser is about to ask for the camera ("prompt"), or null where it won't say.
-async function cameraPermission() {
-  try { return (await navigator.permissions.query({ name: "camera" })).state; } catch { return null; }
-}
-// Browsers ask for the camera on every visit until the site is allowed for good, which only the user can do (a page
-// can't): how to do it in this browser. Safari on iPhone keeps asking until it's set in Website Settings; other
-// browsers on iPhone can't remember it at all.
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-function allowTip() {
-  const ua = navigator.userAgent;
-  if (isIOS()) return /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)
-    ? "This browser asks for the camera every time and can't remember it on iPhone. Open this page in Safari instead, then tap aA in the address bar › Website Settings › Camera › Allow, and it won't ask again."
-    : "To stop the camera question for good: tap aA in the address bar › Website Settings › Camera › Allow. You only do this once.";
-  if (/Android/.test(ua)) return "To stop the camera question: when Chrome asks, choose “Allow while visiting the site”, not “Only this time”.";
-  if (/Firefox\//.test(ua)) return "To stop the camera question: tick “Remember this decision” when Firefox asks.";
-  if (/Edg\/|Chrome\//.test(ua)) return "To stop the camera question: choose “Allow on every visit” when the browser asks, not “Allow this time”.";
-  if (/Safari\//.test(ua)) return "To stop the camera question: Safari › Settings for This Website › Camera › Allow.";
-  return null;
-}
 // Why the camera couldn't start, from getUserMedia's error: a short label and what to do about it in this browser.
 function cameraProblem(e) {
   const ua = navigator.userAgent, name = e?.name || "";
@@ -300,10 +282,7 @@ button.alt:active { background: var(--pb-btn-glass); }
   button:hover, button:active, .redo:hover::before, .next:hover::after { transform: none; }
 }
 .save { color: var(--pb-accent); font-size: 13px; font-weight: 600; }
-/* How to stop the browser asking for the camera every time: shown before the camera starts, until the site is allowed. */
-.allow { order: -1; max-width: 36ch; margin: 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--pb-accent) 28%, transparent); border-radius: 14px;
-  background: color-mix(in srgb, var(--pb-accent) 8%, var(--pb-glass)); color: var(--pb-ink); font-size: 13.5px; line-height: 1.45; text-align: left; }
-.tip { max-width: 38ch; margin: 0; color: var(--pb-muted); font-size: 12.5px; line-height: 1.45; }
+.tip { max-width: min(38ch, 100%); margin: 0; color: var(--pb-muted); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .brand { display: inline-flex; align-items: center; gap: 6px; color: var(--pb-muted); font-size: 12px; font-weight: 600; }
 .brand img { width: 20px; height: 20px; }
 `;
@@ -465,7 +444,6 @@ export class PiggybackAuth extends HTMLElement {
           <div class="text"><p class="eyebrow" hidden></p><h2 class="title">Scan your feet</h2><p class="how"></p></div>
           <ul class="done-list" hidden></ul>
           <div class="leaving" hidden><span></span><i></i></div>
-          <p class="allow" hidden></p>
           <p class="tip" hidden></p>
           <a class="save" href="#" hidden>Save this scan for debugging</a>
           <div class="actions">
@@ -479,7 +457,7 @@ export class PiggybackAuth extends HTMLElement {
         <span class="brand">${PIGGY}Secured by Piggyback</span>
       </div>`;
     const $ = s => this.shadowRoot.querySelector(s);
-    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), allow: $(".allow"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
+    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
     this.ui.start.addEventListener("click", () => {
       if (this.state.phase === "failed") return this.exitUrl && location.assign(this.exitUrl);
       return this.canHandOff ? this.handOff() : this.start();
@@ -510,16 +488,6 @@ export class PiggybackAuth extends HTMLElement {
     // The analyst starts now, so its worker has loaded the engine by the time the camera is on.
     this.analyst ||= new Analyst(this.getAttribute("analysis") === "inline" ? null : this.server);
     this.loadSession().then(() => { if (this.hasAttribute("autostart")) this.start(); });
-    this.adviseCamera();
-  }
-  // If this device's camera will be used and the browser hasn't been told to allow it for good, say how, before it asks.
-  async adviseCamera() {
-    if (this.canHandOff || this.getAttribute("source") === "sample" || !navigator.mediaDevices?.getUserMedia) return;
-    const state = await cameraPermission();
-    // iPhone browsers may not answer the question; there, an unknown state means it will ask.
-    if (state === "granted" || state === "denied" || (state === null && !isIOS())) return;
-    const tip = allowTip();
-    if (tip) { this.ui.allow.textContent = tip; this.ui.allow.hidden = false; }
   }
   disconnectedCallback() { this.stop(); this.analyst?.close(); this.analyst = null; }
 
@@ -603,12 +571,11 @@ export class PiggybackAuth extends HTMLElement {
         await this.ui.video.play().catch(e => { if (e?.name !== "AbortError") throw e; });
       } catch (e) {
         [this.cameraLabel, this.cameraHelp] = cameraProblem(e);
-        this.ui.allow.hidden = true;
         return this.fail("camera_unavailable", this.cameraHelp);
       }
     }
     if (this.hasAttribute("tester")) {
-      const note = "Tester mode: what the camera sees during these scans is saved on the server for 30 days to improve foot detection.";
+      const note = "Tester mode: scans are kept for 30 days to improve detection.";
       this.ui.tip.textContent = note;
       this.ui.tip.hidden = false;
     }
@@ -679,9 +646,9 @@ export class PiggybackAuth extends HTMLElement {
     const cx = f.roi.x + ((x0 + x1 + 1) / 2) * kx, cy = f.roi.y + ((y0 + y1 + 1) / 2) * ky;
     return { x: Math.max(0, Math.min(f.sw - w, cx - w / 2)), y: Math.max(0, Math.min(f.sh - h, cy - h / 2)), w, h };
   }
-  // That part of the camera picture, at analysis size.
-  cropAt(box, src) {
-    const [w, h] = procSize(box.w, box.h), c = (this.workCrop ||= document.createElement("canvas"));
+  // That part of the camera picture, at analysis size (or at `size`, for frames that must match an earlier one exactly).
+  cropAt(box, src, size = null) {
+    const [w, h] = size || procSize(box.w, box.h), c = (this.workCrop ||= document.createElement("canvas"));
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const g = c.getContext("2d", { willReadFrequently: true });
     g.imageSmoothingQuality = "high";
@@ -706,16 +673,21 @@ export class PiggybackAuth extends HTMLElement {
   }
   // During the toe step: where to cut this frame so the ball of the foot sits where it did in the matched frame, at
   // the same size. A phone that drifts closer, further or sideways after the match then cancels out, and only what the
-  // toes do is left for the motion check; a box that stayed put would see the whole foot move and call it blocked.
+  // toes do is left for the motion check. The box only moves when the foot has drifted well clear of where it was
+  // (a tenth of the box, or a sixth in size) for three frames running: nudging it every frame made the whole foot look
+  // as if it moved, and one odd outline (toes mid-curl) must not send it off.
   followBox(a, frame, w) {
-    const b = this.footBall(a.geo), kx = frame.roi.w / a.geo.w, ky = frame.roi.h / a.geo.h;
-    const scale = Math.max(0.5, Math.min(2, (b.width * kx) / (w.ball.width * (w.box.w / w.w))));
-    const bw = Math.min(frame.sw, w.box.w * scale), bh = Math.min(frame.sh, w.box.h * scale);
+    const b = this.footBall(a.geo), kx = frame.roi.w / a.geo.w, ky = frame.roi.h / a.geo.h, p = w.box;
+    const scale = (b.width * kx) / (w.ball.width * (p.w / w.w));
+    if (!(scale > 0.6 && scale < 1.6)) { w.drift = 0; return p; }
+    const fit = Math.min(scale, frame.sw / p.w, frame.sh / p.h), bw = p.w * fit, bh = p.h * fit;
     const bx = frame.roi.x + b.x * kx - (w.ball.x / w.w) * bw, by = frame.roi.y + b.y * ky - (w.ball.y / w.h) * bh;
     const box = { x: Math.max(0, Math.min(frame.sw - bw, bx)), y: Math.max(0, Math.min(frame.sh - bh, by)), w: bw, h: bh };
-    // Half-way to the new place each frame: steady against jitter, quick enough to follow a hand.
-    const p = w.box;
-    return { x: (p.x + box.x) / 2, y: (p.y + box.y) / 2, w: (p.w + box.w) / 2, h: (p.h + box.h) / 2 };
+    const moved = Math.abs(box.x - p.x) > 0.1 * p.w || Math.abs(box.y - p.y) > 0.1 * p.h || Math.abs(fit - 1) > 0.16;
+    w.drift = moved ? (w.drift || 0) + 1 : 0;
+    if (w.drift < 3) return p;
+    w.drift = 0;
+    return box;
   }
 
   // ---------- The scan loop ----------
@@ -880,14 +852,26 @@ export class PiggybackAuth extends HTMLElement {
   // the live look finds it now (followBox), so the phone may drift; when the look fails, the last cut stands.
   tickWiggle(frame) {
     const st = this.state, w = st.wiggle;
+    // Out of time: send what there is, whatever this frame would have said.
+    if (performance.now() - w.started > WIGGLE_TIMEOUT) return this.endWiggle(w.w, w.h);
     const job = this.analyst.analyze(frame.small, { usePrior: true, minToes: 1, fit: LIVE_FIT, quick: true }).then(a => {
       if (a.ok) w.box = this.followBox(a, frame, w);
-      const f = this.cropAt(w.box, frame.src);
-      if (f.w !== w.w || f.h !== w.h) return null;
+      const f = this.cropAt(w.box, frame.src, [w.w, w.h]);
       const G = grayFromRGBA(f.rgba, f.w, f.h), cue = w.step;
       return this.analyst.motion(G, f.w, f.h).then(r => ({ G, cue, r, f }));
     });
-    this.defer(job, x => { if (x) this.toesSeen(x.G, x.cue, x.r.m, x.r.state, x.f); });
+    this.defer(job, x => this.toesSeen(x.G, x.cue, x.r.m, x.r.state, x.f));
+  }
+  // The toe step is over (every cue answered, or time's up): send the last few frames of each cue, in order, since
+  // each cue's run is at its end. Not before the server has confirmed the match, though: until then, "Checking…".
+  endWiggle(gw, gh) {
+    const st = this.state, w = st.wiggle, keep = [];
+    for (let c = 0; c < CUES.length; c++) keep.push(...w.frames.filter(x => x.cue === c).slice(-WIGGLE_PER_CUE));
+    const send = () => this.upload([], keep, gw, gh);
+    if (st.matched) return send();
+    st.phase = "upload";
+    st.onMatched = send;
+    return this.setStatus("Checking…");
   }
   toesSeen(G, cue, m, state, f) {
     const st = this.state, w = st.wiggle;
@@ -897,18 +881,7 @@ export class PiggybackAuth extends HTMLElement {
     w.blocked = state === "blocked" ? w.blocked + 1 : 0;
     w.run = state === CUES[w.step] ? w.run + 1 : 0;
     if (w.run >= LIVE.run) { w.step++; w.run = 0; }
-    const done = w.step >= CUES.length;
-    if (done || performance.now() - w.started > WIGGLE_TIMEOUT) {
-      // Send the last few frames of each cue, in order: each cue's run is at its end. Not before the server has
-      // confirmed the match, though: until then, "Checking…".
-      const keep = [];
-      for (let c = 0; c < CUES.length; c++) keep.push(...w.frames.filter(x => x.cue === c).slice(-WIGGLE_PER_CUE));
-      const send = () => this.upload([], keep, f.w, f.h);
-      if (st.matched) return send();
-      st.phase = "upload";
-      st.onMatched = send;
-      return this.setStatus("Checking…");
-    }
+    if (w.step >= CUES.length || performance.now() - w.started > WIGGLE_TIMEOUT) return this.endWiggle(f.w, f.h);
     const [text, how] = [
       ["Curl your toes", "Keep your heel on the floor and curl your toes under."],
       ["Now relax them", "Toes flat on the floor again."],

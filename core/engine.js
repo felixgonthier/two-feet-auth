@@ -26,6 +26,14 @@ export const VIEWS = [
     how: "Now your bare left foot, the same way: flat on the floor, phone straight above, the whole foot inside the frame, toes at the top." },
 ];
 for (const v of VIEWS) v.otherKey = `${v.side === "L" ? "R" : "L"}.${v.view}`;
+// An enrollment takes each foot from a few places (like a face enrollment that has you turn your head), so that a
+// later login, from wherever the phone happens to be held, has one of them close by: a login is matched against the
+// closest pose, not an average of them, which would be a blur that anyone's foot comes nearer to.
+export const POSES = [
+  { sub: "From straight above", how: "Hold the phone straight above the foot, the whole foot inside the frame, toes at the top." },
+  { sub: "Tilted towards you", how: "Same foot. Tilt the top of the phone away from you a little, so you see the foot more from the ankle side." },
+  { sub: "Tilted outwards", how: "Same foot. Now tilt the phone a little towards the small toe, so you see the foot from the outside." },
+];
 export const viewByKey = Object.fromEntries(VIEWS.map(v => [v.key, v]));
 
 // The guide frame, centred, in source pixels.

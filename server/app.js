@@ -12,7 +12,7 @@ import { Store } from "./store.js";
 import { signJwt } from "./jwt.js";
 import { createOidc } from "./oidc.js";
 import { createState } from "./state.js";
-import { VIEWS, viewByKey, PROC } from "../core/engine.js";
+import { VIEWS, POSES, viewByKey, PROC } from "../core/engine.js";
 import { decideEnroll, decideVerify, decideMatch, decideLive } from "../core/decide.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -380,7 +380,9 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, te
       // A request with both does both at once, for older clients.
       const stills = frames.some(f => f.format === "rgba"), grays = frames.some(f => f.format === "gray");
       let r;
-      if (s.purpose === "enroll") r = decideEnroll(view, frames, s.pending[view.otherKey]);
+      // Enrollment takes POSES.length poses of each foot, one upload each (`pose`); a client that sends none is done in one.
+      const pose = Number.isInteger(body.pose) && body.pose >= 0 && body.pose < POSES.length ? body.pose : null;
+      if (s.purpose === "enroll") r = decideEnroll(view, frames, s.pending[view.otherKey], pose ?? 0);
       else if (stills && grays) r = decideVerify(view, frames, user);
       else if (stills) {
         r = decideMatch(view, frames, user);
@@ -396,7 +398,15 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, te
         r = { ...decideLive(st.matched.ref, frames), score: st.matched.score };
         delete st.matched;
       }
-      if (r.ok && r.templates) s.pending[view.key] = r.templates;
+      if (r.ok && r.templates) {
+        s.pending[view.key] = [...(s.pending[view.key] || []).filter(t => t.pose !== (pose ?? 0)), ...r.templates];
+        if (pose !== null && pose + 1 < POSES.length) {
+          // This pose is saved; the view isn't done until every pose is. No try used.
+          await saveSession(s);
+          log(`session ${s.id} ${view.key} pose ${pose} saved`);
+          return send(res, 200, { ok: true, key: view.key, pose, next_pose: pose + 1, poses: POSES.length });
+        }
+      }
       st.attempts++;
       if (r.ok) Object.assign(st, { ok: true, score: r.score ?? null, live: !!r.live });
       else if (st.attempts >= MAX_ATTEMPTS) s.failed = true;

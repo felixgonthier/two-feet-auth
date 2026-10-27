@@ -14,9 +14,9 @@ export function analyzeInOrder(frames) {
 }
 const otherSide = view => (view.side === "L" ? "right" : "left");
 
-// Enrollment: two or more steady still frames of the right foot.
+// Enrollment: two or more steady still frames of the right foot, for one pose of it (POSES in engine.js).
 // `others` are templates just enrolled for the opposite foot's same view, to catch the same foot shown twice.
-export function decideEnroll(view, frames, others) {
+export function decideEnroll(view, frames, others, pose = 0) {
   const shots = analyzeInOrder(frames.filter(f => f.format === "rgba"));
   const good = shots.filter(a => a.ok);
   if (good.length < 2) return { ok: false, reason: "no_foot", message: (shots.find(a => !a.ok) || {}).message || "No foot found." };
@@ -31,8 +31,12 @@ export function decideEnroll(view, frames, others) {
   if (others && bestOf(others, keep[0].features) >= 0.86) {
     return { ok: false, reason: "wrong_foot", message: `That looks like your ${otherSide(view)} foot.` };
   }
-  return { ok: true, templates: keep.map(a => a.features) };
+  return { ok: true, templates: keep.map(a => ({ ...a.features, pose })) };
 }
+// Templates of one view, grouped by the pose they were taken in (older templates have none: one group).
+const byPose = list => Object.values((list || []).reduce((g, t) => ((g[t.pose ?? 0] ||= []).push(t), g), {}));
+// How well a probe matches a view's templates: against the closest pose's average.
+const matchScore = (list, probe) => Math.max(0, ...byPose(list).map(group => compare(meanFeatures(group), probe).score));
 
 // Logging in, step 1: still frames that match the enrolled view. On a match, `ref` is what the toes are compared
 // against in step 2: the first frame that passes (the scanner measures against the same one), in grey, with the foot's
@@ -48,7 +52,7 @@ export function decideMatch(view, frames, user) {
     if (agree.length > keep.length) keep = agree;
   }
   const probe = meanFeatures(keep.map(x => x.a.features));
-  const against = list => (list?.length ? compare(meanFeatures(list), probe).score : 0);
+  const against = list => matchScore(list, probe);
   const score = against(user.views[view.key]), alt = against(user.views[view.otherKey]);
   if (score < MATCH) {
     return alt >= MATCH && alt > score

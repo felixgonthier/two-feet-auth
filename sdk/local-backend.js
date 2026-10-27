@@ -5,7 +5,7 @@
 //   const el = document.createElement("piggyback-auth");
 //   el.backend = new LocalBackend({ purpose: "enroll" });
 //   el.backend.onHandoff = phone => …   // optional: "Use my phone" hands `phone` (a backend for a simulated phone) to you
-import { VIEWS, viewByKey, validFeature } from "../core/engine.js";
+import { VIEWS, POSES, viewByKey, validFeature } from "../core/engine.js";
 import { decideEnroll, decideVerify, decideMatch, decideLive } from "../core/decide.js";
 
 const MAX_ATTEMPTS = 5;
@@ -69,14 +69,17 @@ export class LocalBackend {
     // A stand-in for the QR code: with the real service it opens the phone page; here it opens the project.
     return { url: "https://github.com/felixgonthier/two-feet-auth#how-it-works", expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() };
   }
-  async submitView(key, frames) {
+  async submitView(key, frames, { pose = null } = {}) {
     if (this.failed) throw Object.assign(new Error("Too many failed attempts. Start again."), { code: "session_failed" });
     if (!this.required.includes(key)) throw Object.assign(new Error("This session doesn't ask for that view."), { code: "view_not_requested" });
     const view = viewByKey[key], st = (this.state[key] ||= { ok: false, attempts: 0 });
     let r;
     if (this.purpose === "enroll") {
-      r = decideEnroll(view, frames, this.pending[view.otherKey]);
-      if (r.ok) this.pending[key] = r.templates;
+      r = decideEnroll(view, frames, this.pending[view.otherKey], pose ?? 0);
+      if (r.ok) {
+        this.pending[key] = [...(this.pending[key] || []).filter(t => t.pose !== (pose ?? 0)), ...r.templates];
+        if (pose !== null && pose + 1 < POSES.length) return { ok: true, key, pose, next_pose: pose + 1, poses: POSES.length };
+      }
     } else {
       const user = LocalBackend.user(this.userId, this.storageKey);
       if (!user) throw Object.assign(new Error("Enroll first."), { code: "not_enrolled" });

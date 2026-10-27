@@ -15,7 +15,7 @@
 // Attributes: server, session-token, autostart, source="sample" (drawn feet, for demos), sample-who="you|impostor|photo",
 //   handoff="auto|on|off" (computers offer "Use my phone" with a QR code by default), mode="phone" (set by the phone page).
 // Theme with CSS custom properties: --pb-accent, --pb-accent-ink, --pb-bg, --pb-ink, --pb-muted, --pb-good, --pb-bad, --pb-font.
-import { viewByKey, LIVE, STEADY, roiFor, GUIDE, procSize, analyzePixels, compare, zones, motionOf, toeState, grayFromRGBA } from "../core/engine.js";
+import { viewByKey, POSES, LIVE, STEADY, roiFor, GUIDE, procSize, analyzePixels, compare, zones, motionOf, toeState, grayFromRGBA } from "../core/engine.js";
 import { analyzeInOrder } from "../core/decide.js";
 import { qrEncode } from "../core/qr.js";
 
@@ -411,9 +411,9 @@ export class HttpBackend {
     return data;
   }
   getSession() { return this.call("GET", "/v1/session"); }
-  async submitView(key, frames) {
+  async submitView(key, frames, extra = {}) {
     const packed = await Promise.all(frames.map(f => packFrame(f.px, f.w, f.h, f.format, f.cue)));
-    return this.call("POST", `/v1/session/views/${key}`, { frames: packed });
+    return this.call("POST", `/v1/session/views/${key}`, { frames: packed, ...extra });
   }
   complete() { return this.call("POST", "/v1/session/complete"); }
   resetView(key) { return this.call("POST", `/v1/session/views/${key}/reset`); }
@@ -580,7 +580,7 @@ export class PiggybackAuth extends HTMLElement {
       this.ui.tip.textContent = note;
       this.ui.tip.hidden = false;
     }
-    Object.assign(this.state, { running: true, i: this.views.findIndex(v => !v.ok) });
+    Object.assign(this.state, { running: true, i: this.views.findIndex(v => !v.ok), pose: 0 });
     this.ui.start.hidden = true;
     // A worker for the analysis, unless the element says not to (analysis="inline") or the engine can't be reached.
     this.analyst ||= new Analyst(this.getAttribute("analysis") === "inline" ? null : this.server);
@@ -895,7 +895,7 @@ export class PiggybackAuth extends HTMLElement {
       r = await this.api.submitView(view.key, [
         ...stills.map(f => ({ w: f.w, h: f.h, format: "rgba", px: f.rgba })),
         ...grays.map(x => ({ w: gw, h: gh, format: "gray", px: x.G, cue: x.cue })),
-      ]);
+      ], this.purpose === "enroll" ? { pose: st.pose } : {});
     } catch (e) {
       return this.fail(e.code, e.message);
     }
@@ -922,6 +922,15 @@ export class PiggybackAuth extends HTMLElement {
       this.setStatus(`${short} · ${r.attempts_left} ${r.attempts_left === 1 ? "try" : "tries"} left`, "bad", null, r.message);
       st.phase = "pause";
       setTimeout(() => { if (st.running) this.beginView(); }, 1600);
+      return;
+    }
+    if (r.next_pose != null) {
+      // One pose saved; the same foot from the next place, after a beat.
+      st.pose = r.next_pose;
+      this.react("yes", 900);
+      this.setStatus("Saved", "good", 1, POSES[st.pose].how);
+      st.phase = "pause";
+      setTimeout(() => { if (st.running) this.beginView(); }, 1100);
       return;
     }
     view.ok = true;
@@ -1013,6 +1022,7 @@ export class PiggybackAuth extends HTMLElement {
     const next = this.views.findIndex(v => !v.ok);
     if (next < 0) return this.finish();
     this.state.i = next;
+    this.state.pose = 0;
     this.beginView();
   }
   async redoView() {
@@ -1021,6 +1031,7 @@ export class PiggybackAuth extends HTMLElement {
     try { await this.api.resetView(view.key); } catch (e) { return this.fail(e.code, e.message); }
     view.ok = false;
     this.frozen = null;
+    st.pose = 0;
     this.beginView();
   }
   async finish() {
@@ -1154,6 +1165,7 @@ export class PiggybackAuth extends HTMLElement {
         : st.handoff === "claimed" ? "Follow the steps on your phone. This page carries on by itself once they're done."
         : "Point your phone's camera at the code and open the link. You'll scan your feet there, and this page carries on by itself."];
     }
+    if (view && enroll && POSES.length > 1) return [view.title, `${st.pose + 1} of ${POSES.length}, ${POSES[st.pose].sub.toLowerCase()}. ${st.pose ? POSES[st.pose].how : view.how}`];
     if (view) return [view.title, view.how];
     return enroll ? ["Enroll your feet", "The camera looks at the top of each foot, one after the other. Socks off, on a plain floor."]
       : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and wiggle your toes when asked.`];

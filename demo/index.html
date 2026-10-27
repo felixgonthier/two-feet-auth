@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Piggyback</title>
+<link rel="icon" href="../brand/favicon-32.png" type="image/png">
+<link rel="stylesheet" href="../ui/tokens.css">
+<link rel="stylesheet" href="../ui/controls.css">
+<link rel="stylesheet" href="../ui/page.css">
+<style>
+/* Demo shell around the real <piggyback-auth> element. Everything runs in this browser through LocalBackend. */
+.pb-page { gap: 26px; justify-items: center; text-align: center; }
+header { display: grid; gap: 8px; justify-items: center; }
+header img { width: 112px; height: 112px; }
+h1 { margin: 0; font-size: clamp(36px, 7vw, 48px); font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.tagline { margin: 0; font-size: 17px; font-weight: 600; }
+.lede { margin: 4px 0 0; max-width: 52ch; color: var(--pb-muted); }
+/* The control panel: every control shares its edges. */
+.pb-panel { width: 100%; max-width: 440px; text-align: left; }
+.pb-panel .pb-switch { padding: 0 6px; }
+.who-row { display: grid; gap: 8px; }
+.who-row > span { padding: 0 6px; color: var(--pb-muted); font-size: 14px; }
+#slot { width: 100%; }
+/* The simulated phone for "Use my phone": a phone-shaped bezel around the real phone-mode element. */
+.phone { display: grid; gap: 12px; justify-items: center; width: 100%; }
+.phone > small { max-width: 44ch; color: var(--pb-muted); font-size: 13px; }
+.phone .device { position: relative; width: min(380px, 100%); aspect-ratio: 9 / 18.5; padding: 12px; border-radius: 58px; background: linear-gradient(160deg, #3A3F4A, #14161A 40%); box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, var(--pb-lift), 0 40px 80px -40px rgba(20,22,26,.5); }
+.phone .device::before { content: ""; position: absolute; top: 26px; left: 50%; z-index: 2; width: 96px; height: 28px; border-radius: 99px; background: #0B0C0E; transform: translateX(-50%); }
+.phone .screen { height: 100%; overflow-y: auto; display: grid; align-content: center; padding: 64px 14px 24px; border-radius: 46px; }
+.phone .ask { display: grid; gap: 12px; justify-items: center; text-align: center; padding: 8px 6px; }
+.phone .ask img { width: 96px; }
+.phone .ask .pb-title { font-size: 22px; }
+.phone .ask .pb-btn { margin-top: 6px; }
+footer { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; padding-top: 24px; border-top: 1px solid var(--pb-glass-line); color: var(--pb-muted); font-size: 14px; text-align: left; }
+footer h2 { margin: 0 0 8px; color: var(--pb-ink); font-size: 15px; font-weight: 700; }
+footer ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+@media (max-width: 640px) { footer { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body class="pb-backdrop">
+<main class="pb-page wide">
+  <header>
+    <img src="../brand/logo-256.png" alt="">
+    <h1>Piggyback</h1>
+    <p class="tagline">The new 2FA (Two-Feet Authentication)</p>
+    <p class="lede">Enroll the top of both feet once. After that, logging in asks for one of them, picked at random, plus a toe wiggle.</p>
+  </header>
+
+  <div class="pb-panel tight">
+    <div class="pb-seg fill" role="tablist" aria-label="Step">
+      <button type="button" role="tab" id="tab-enroll" aria-selected="true">1 · Enroll</button>
+      <button type="button" role="tab" id="tab-login" aria-selected="false">2 · Log in</button>
+    </div>
+    <label class="pb-switch row" for="sample">
+      <span><b>Sample feet</b><small>A simulated camera with drawn feet</small></span>
+      <input type="checkbox" id="sample">
+      <span class="track" aria-hidden="true"></span>
+    </label>
+    <div class="who-row" id="who-row" hidden>
+      <span>Whose feet are in front of the camera?</span>
+      <div class="pb-seg fill">
+        <button type="button" data-who="you" aria-pressed="true">Yours</button>
+        <button type="button" data-who="impostor" aria-pressed="false">Impostor</button>
+        <button type="button" data-who="photo" aria-pressed="false">A photo</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="slot"></div>
+  <div class="phone" id="phone" hidden>
+    <span class="pb-chip dot">Simulated phone</span>
+    <div class="device"><div class="screen pb-backdrop"></div></div>
+    <small>With the real service, scanning the QR code opens this on your phone.</small>
+  </div>
+
+  <footer>
+    <div>
+      <h2>What this demo is</h2>
+      <ul>
+        <li>The real scanner element and the same matching code the server uses, running in this browser instead.</li>
+        <li>Foot measurements are kept in this browser only. No photos or video are stored.</li>
+        <li>Real logins use the verification service, so nobody can edit the result in the page.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Using your own feet</h2>
+      <ul>
+        <li>Live camera needs https or localhost. Embedded previews that block the camera can still run Sample feet.</li>
+        <li>With Sample feet on a computer, "Use my phone" shows a simulated phone below the scanner. With the real service, the QR code opens it on your phone.</li>
+        <li>Socks off, trousers on: only the foot should be bare. A plain floor that contrasts with your skin works best.</li>
+      </ul>
+    </div>
+  </footer>
+</main>
+<div class="pb-toasts" aria-live="polite">
+  <div class="pb-toast" id="note" hidden></div>
+  <div class="pb-toast" id="result" hidden></div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

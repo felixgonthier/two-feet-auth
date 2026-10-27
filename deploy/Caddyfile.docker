@@ -1,0 +1,4 @@
+# Used by docker-compose.yml: https in front of the Piggyback service. The domain comes from .env.
+{$PIGGYBACK_DOMAIN} {
+	reverse_proxy piggyback:8787
+}

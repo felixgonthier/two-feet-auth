@@ -1,0 +1,25 @@
+# systemd unit for the Piggyback service. Copy to /etc/systemd/system/piggyback.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now piggyback
+# Logs: journalctl -u piggyback -f
+[Unit]
+Description=Piggyback foot-scan second factor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=piggyback
+Group=piggyback
+WorkingDirectory=/opt/piggyback/app
+EnvironmentFile=/etc/piggyback/piggyback.env
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=2
+# Lock it down: it only needs to write its data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/piggyback
+
+[Install]
+WantedBy=multi-user.target

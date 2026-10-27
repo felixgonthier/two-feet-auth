@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Continue on your phone · Piggyback</title>
+<link rel="icon" href="/brand/favicon-32.png" type="image/png">
+<link rel="stylesheet" href="/ui/tokens.css">
+<link rel="stylesheet" href="/ui/controls.css">
+<link rel="stylesheet" href="/ui/page.css">
+<style>
+  .pb-page { gap: 24px; justify-items: center; text-align: center; }
+  header { display: grid; justify-items: center; gap: 10px; }
+  #slot { width: 100%; display: grid; gap: 16px; justify-items: center; }
+  .pb-panel { width: 100%; text-align: left; }
+  piggyback-auth { width: 100%; --pb-bg: var(--pb-paper); }
+  .note { margin: 0; color: var(--pb-muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body class="pb-backdrop">
+<main class="pb-page">
+  <header>
+    <span class="pb-lockup"><img src="/brand/logo-128.png" alt="">Piggyback</span>
+    <p class="pb-chip">Frames are checked, never recorded.</p>
+  </header>
+  <div id="slot"></div>
+</main>
+<script type="module" src="/sdk/handoff.js"></script>
+</body>
+</html>

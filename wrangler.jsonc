@@ -1,0 +1,7 @@
+// The piggylover.com landing page on Cloudflare (Workers static assets): `npx wrangler deploy` serves landing/.
+// The service itself (feet.…) and the demo app run elsewhere; see docs/DEPLOY.md.
+{
+  "name": "piggylover",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./landing" }
+}

@@ -1,0 +1,8 @@
+# Used by docker-compose.yml when .env sets CADDYFILE=./deploy/Caddyfile.docker-demo: the service and the example app.
+{$PIGGYBACK_DOMAIN} {
+	reverse_proxy piggyback:8787
+}
+
+{$DEMO_DOMAIN} {
+	reverse_proxy demo-app:3000
+}

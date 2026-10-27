@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Verify with your feet · Piggyback</title>
+<link rel="icon" href="/brand/favicon-32.png" type="image/png">
+<link rel="stylesheet" href="/ui/tokens.css">
+<link rel="stylesheet" href="/ui/controls.css">
+<link rel="stylesheet" href="/ui/page.css">
+<style>
+  .pb-page { --pb-page-width: 760px; gap: 24px; justify-items: center; text-align: center; }
+  header { display: grid; justify-items: center; gap: 10px; }
+  #slot { width: 100%; display: grid; gap: 16px; justify-items: center; }
+  #exit { margin: 0; }
+  #slot > .pb-panel { max-width: 440px; }
+  piggyback-auth { width: 100%; --pb-bg: var(--pb-paper); }
+</style>
+</head>
+<body class="pb-backdrop">
+<main class="pb-page">
+  <header>
+    <span class="pb-lockup"><img src="/brand/logo-128.png" alt="">Piggyback</span>
+    <p class="pb-chip">Frames are checked, never recorded.</p>
+  </header>
+  <div id="slot"></div>
+  <p id="exit"></p>
+</main>
+<script type="module" src="/sdk/hosted.js"></script>
+</body>
+</html>

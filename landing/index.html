@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Piggyback · The new 2FA (Two-Feet Authentication)</title>
+  <meta name="description" content="Piggyback is a second factor you pass with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in. Self-hosted, open on GitHub, and frames are checked, never recorded.">
+  <link rel="canonical" href="https://piggylover.com/">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Piggyback">
+  <meta property="og:url" content="https://piggylover.com/">
+  <meta property="og:title" content="Piggyback · The new 2FA (Two-Feet Authentication)">
+  <meta property="og:description" content="Sign in with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in.">
+  <meta property="og:image" content="https://piggylover.com/assets/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Piggyback, the new 2FA: Two-Feet Authentication. A cartoon pig next to a phone-shaped scanner with a foot inside.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Piggyback · The new 2FA (Two-Feet Authentication)">
+  <meta name="twitter:description" content="Sign in with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in.">
+  <meta name="twitter:image" content="https://piggylover.com/assets/og.jpg">
+  <meta name="twitter:image:alt" content="Piggyback, the new 2FA: Two-Feet Authentication.">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preload" as="image" href="assets/img/mascot.webp" type="image/webp">
+  <link rel="stylesheet" href="assets/css/tokens.css">
+  <link rel="stylesheet" href="assets/css/controls.css">
+  <link rel="stylesheet" href="assets/css/landing.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="page-wash" aria-hidden="true"></div>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="lockup" href="#top" aria-label="Piggyback, back to top">
+      <img src="assets/img/logo-128.webp" width="38" height="38" alt="">
+      Piggyback
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#why">Why feet</a>
+      <a href="#developers">Developers</a>
+      <a href="#privacy">Privacy</a>
+      <a href="https://github.com/felixgonthier/two-feet-auth">GitHub</a>
+    </nav>
+    <a class="pb-btn small" href="https://demo.piggylover.com">Try the demo</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Hero -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="hero-copy">
+        <h1 class="hero-title" id="hero-title">
+          <span class="sr-only">Two-Feet Authentication.</span>
+          <span class="line" aria-hidden="true">Two-<span class="fix"><span class="old">Factor</span><span class="new">Feet</span></span></span>
+          <span class="line" aria-hidden="true">Authentication.</span>
+        </h1>
+        <p class="lead"><strong>Piggyback is a second factor you pass barefoot.</strong> Show your phone the foot it asks for, lift your toes when it says so, and you're in. It sits on top of the login you already have.</p>
+        <div class="cta">
+          <a class="pb-btn big" href="https://demo.piggylover.com">
+            Try the demo
+            <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="pb-btn big secondary" href="https://github.com/felixgonthier/two-feet-auth">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+            Self-host it
+          </a>
+        </div>
+        <p class="hint">Demo: any name, the password <code>demo</code>, then your feet.</p>
+      </div>
+
+      <div class="hero-visual">
+        <figure class="scanner" role="img" aria-label="The Piggyback scanner, animated: a phone-shaped lens finds a right foot, the line around it fills green while the foot holds still, refills pink while the toes wiggle, and the pig judge turns green with a check when it matches.">
+          <div class="stage">
+            <svg class="lens-svg" viewBox="0 0 272 424" aria-hidden="true">
+              <defs>
+                <linearGradient id="skin" x1="0.1" y1="0" x2="0.9" y2="1">
+                  <stop offset="0" stop-color="#F7CFAF"/>
+                  <stop offset="0.6" stop-color="#EDB590"/>
+                  <stop offset="1" stop-color="#DE9C77"/>
+                </linearGradient>
+                <radialGradient id="floor" cx="50%" cy="42%" r="75%">
+                  <stop offset="0" stop-color="#3B404B"/>
+                  <stop offset="1" stop-color="#2B2F38"/>
+                </radialGradient>
+                <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#4CD992" stop-opacity="0"/>
+                  <stop offset="1" stop-color="#4CD992" stop-opacity="0.35"/>
+                </linearGradient>
+                <clipPath id="lens-clip"><rect x="12" y="12" width="248" height="400" rx="44"/></clipPath>
+                <filter id="cast" x="-40%" y="-20%" width="180%" height="140%">
+                  <feDropShadow dx="-12" dy="8" stdDeviation="7" flood-color="#0B0C10" flood-opacity="0.45"/>
+                </filter>
+                <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feGaussianBlur stdDeviation="3" result="b"/>
+                  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <path id="sole" d="M88 128C80 146 80 168 86 190C92 214 98 236 98 262C98 288 96 306 100 322C108 352 162 352 170 322C174 300 176 270 182 238C188 206 196 178 192 152C184 128 124 108 88 128Z"/>
+                <g id="toe-shapes">
+                  <ellipse cx="104" cy="104" rx="19" ry="25"/>
+                  <ellipse cx="135" cy="104" rx="12.5" ry="16" transform="rotate(4 135 104)"/>
+                  <ellipse cx="155" cy="112" rx="11.5" ry="13.5" transform="rotate(10 155 112)"/>
+                  <ellipse cx="172" cy="125" rx="10.5" ry="11.5" transform="rotate(18 172 125)"/>
+                  <ellipse cx="187" cy="141" rx="9.5" ry="10.5" transform="rotate(26 187 141)"/>
+                </g>
+              </defs>
+
+              <!-- Glass frame, then the line that does the talking: grey track, green fill, pink refill. -->
+              <rect class="lens-frame" x="1" y="1" width="270" height="422" rx="56"/>
+              <path class="ring ring-track" d="M136 6H216A50 50 0 0 1 266 56V368A50 50 0 0 1 216 418H56A50 50 0 0 1 6 368V56A50 50 0 0 1 56 6Z"/>
+              <path class="ring ring-green" pathLength="100" d="M136 6H216A50 50 0 0 1 266 56V368A50 50 0 0 1 216 418H56A50 50 0 0 1 6 368V56A50 50 0 0 1 56 6Z"/>
+              <path class="ring ring-pink" pathLength="100" d="M136 6H216A50 50 0 0 1 266 56V368A50 50 0 0 1 216 418H56A50 50 0 0 1 6 368V56A50 50 0 0 1 56 6Z"/>
+
+              <g clip-path="url(#lens-clip)">
+                <rect x="12" y="12" width="248" height="400" fill="url(#floor)"/>
+                <!-- Searching: a soft glowing outline shows which foot. -->
+                <g transform="translate(17 10) scale(0.88)">
+                <g class="guide">
+                  <use href="#sole"/>
+                  <use href="#toe-shapes"/>
+                </g>
+                <!-- The foot -->
+                <g class="foot">
+                  <g filter="url(#cast)">
+                    <use href="#sole" fill="url(#skin)"/>
+                    <g class="toes">
+                      <use href="#toe-shapes" fill="url(#skin)"/>
+                      <g fill="#FFF3EA" opacity="0.4">
+                        <ellipse cx="102" cy="92" rx="9" ry="8"/>
+                        <ellipse cx="135" cy="95" rx="5.5" ry="5"/>
+                        <ellipse cx="155.5" cy="105" rx="5" ry="4.4"/>
+                        <ellipse cx="173" cy="119" rx="4.4" ry="3.8"/>
+                        <ellipse cx="188.5" cy="135.5" rx="3.6" ry="3.2"/>
+                      </g>
+                    </g>
+                  </g>
+                  <!-- Ripples at the toes -->
+                  <circle class="ripple" cx="104" cy="88" r="16"/>
+                  <circle class="ripple r2" cx="140" cy="96" r="18"/>
+                  <circle class="ripple r3" cx="174" cy="120" r="16"/>
+                </g>
+                </g>
+                <rect class="scan-beam" x="12" y="40" width="248" height="34" fill="url(#beam)"/>
+
+                <!-- Which foot -->
+                <g>
+                  <rect x="64" y="26" width="144" height="34" rx="17" fill="rgba(20,22,26,0.55)" stroke="rgba(255,255,255,0.16)"/>
+                  <circle cx="83" cy="43" r="11" fill="#E5578A"/>
+                  <text x="83" y="47.2" fill="#fff" font-size="12" font-weight="800" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">R</text>
+                  <text x="101" y="47.6" fill="#fff" font-size="13.5" font-weight="700" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">Right foot <tspan fill="rgba(255,255,255,0.7)" font-weight="500" font-size="11.5">· top</tspan></text>
+                </g>
+
+                <!-- The judge -->
+                <g>
+                  <rect class="judge-tile" x="106" y="334" width="60" height="60" rx="18"/>
+                  <image class="judge-pig" href="assets/img/logo-128.webp" x="112" y="339" width="48" height="48"/>
+                  <g class="judge-check">
+                    <circle cx="164" cy="337" r="11" fill="#4CD992" stroke="#fff" stroke-width="2"/>
+                    <path d="M159 337.5l3.4 3.4 6.4-6.8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </g>
+                </g>
+              </g>
+            </svg>
+            <img class="hero-pig" src="assets/img/mascot.webp" width="600" height="852" alt="" fetchpriority="high">
+          </div>
+          <div class="status" aria-hidden="true">
+            <span class="chip s-search"><span class="dot"></span>Show your right foot</span>
+            <span class="chip s-hold"><span class="dot"></span>Hold still…</span>
+            <span class="chip s-wiggle"><span class="dot"></span>Lift your toes</span>
+            <span class="chip s-match"><span class="dot"></span>Matched</span>
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Works with -->
+  <div class="strip" aria-label="Ways to add it">
+    <div class="wrap">
+      <p>Works with</p>
+      <span class="chip">Any backend, by redirect</span>
+      <span class="chip"><code>&lt;piggyback-auth&gt;</code></span>
+      <span class="chip">Okta</span>
+      <span class="chip">Entra ID</span>
+      <span class="chip">Ping</span>
+      <span class="chip">Keycloak</span>
+      <span class="chip">Auth0</span>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <section id="how" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <h2 id="how-title">How it works</h2>
+        <p class="lead">It runs in the phone's browser, so there's no app to install. You need a plain floor and bare feet.</p>
+      </div>
+      <ol class="steps">
+        <li class="step card reveal">
+          <figure class="phone">
+            <img src="assets/img/mobile-demo.webp" width="554" height="1200" loading="lazy" decoding="async" alt="The scanner on a phone: a right foot inside a phone-shaped lens, the green line filling around it, and the status Hold still.">
+          </figure>
+          <div>
+            <span class="step-num" aria-hidden="true">1</span>
+            <h3>Enroll once</h3>
+            <p>Show the top of your right foot, then your left. Each one is saved after a couple of seconds held still, then shown back so you can redo it.</p>
+          </div>
+        </li>
+        <li class="step card reveal">
+          <figure class="phone">
+            <img src="assets/img/mobile-hosted.webp" width="554" height="1200" loading="lazy" decoding="async" alt="The hosted scan page on a phone, with the tagline Frames are checked, never recorded, above the lens and a right foot inside it.">
+          </figure>
+          <div>
+            <span class="step-num" aria-hidden="true">2</span>
+            <h3>Show the foot it asks for</h3>
+            <p>At sign-in the server picks a foot. Piggyback compares its outline, width profile, proportions, skin texture and tone with the one you enrolled.</p>
+          </div>
+        </li>
+        <li class="step card reveal">
+          <figure class="phone">
+            <img src="assets/img/mobile-bank.webp" width="554" height="1200" loading="lazy" decoding="async" alt="Piggy Bank, the demo app, after sign-in: the pig points at a card that says Right foot and Toes wiggled.">
+          </figure>
+          <div>
+            <span class="step-num" aria-hidden="true">3</span>
+            <h3>Lift your toes when asked</h3>
+            <p>Once it matches, keep your heel down and follow the prompts: toes up, down, then up again. A photo of your feet can't follow them.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Handoff -->
+  <section class="handoff" aria-labelledby="handoff-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="reveal">
+        <h2 id="handoff-title">Signing in on a computer</h2>
+        <ul class="ticks">
+          <li><span class="tick" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>It shows a QR code.</strong> “Continue on your phone” holds a one-time link that expires in two minutes.</span></li>
+          <li><span class="tick" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>The phone scans it.</strong> No app to install: it opens in the browser and asks before it carries on.</span></li>
+          <li><span class="tick" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>The computer finishes by itself.</strong> Feet on the phone, sign-in on the laptop.</span></li>
+        </ul>
+      </div>
+      <div class="devices reveal">
+        <div class="browser">
+          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>feet.piggylover.com</span></div>
+          <img src="assets/img/desktop-handoff.webp" width="1600" height="1000" loading="lazy" decoding="async" alt="On a computer, the scanner's lens shows a QR code with the pig in the middle, next to the status Waiting for your phone and a Use this computer button.">
+        </div>
+        <div class="phone">
+          <img src="assets/img/mobile-handoff.webp" width="554" height="1200" loading="lazy" decoding="async" alt="The phone after scanning the code: Enroll your feet for Piggy Bank, Started on a Mac in Chrome, and a Scan my feet button.">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why feet -->
+  <section id="why" class="band-why" aria-labelledby="why-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <h2 id="why-title">Why feet</h2>
+      </div>
+      <ul class="reasons">
+        <li class="reason card reveal">
+          <span class="bead" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="#fff"><path d="M10.2 13.6c-2.3.2-3.6 2.6-3.5 6 .1 3.7 1.4 7.4 4 7.2 2.4-.2 2.5-3.5 2-6.4-.5-3-.6-7-2.5-6.8Z"/><circle cx="9.3" cy="9.8" r="2.1"/><circle cx="12.6" cy="9.4" r="1.4"/><circle cx="14.6" cy="10.6" r="1.2"/><circle cx="15.9" cy="12.4" r="1"/><path d="M22.4 7.8c2.3.2 3.6 2.6 3.5 6-.1 3.7-1.4 7.4-4 7.2-2.4-.2-2.5-3.5-2-6.4.5-3 .6-7 2.5-6.8Z" opacity=".75"/></svg>
+          </span>
+          <h3>Nothing to carry</h3>
+          <p>No key fob and no code to retype. You need your phone's camera and your feet.</p>
+        </li>
+        <li class="reason card reveal">
+          <span class="bead pink" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="20" height="20" rx="6"/><circle cx="12" cy="12" r="1.3" fill="#fff"/><circle cx="20" cy="20" r="1.3" fill="#fff"/><circle cx="20" cy="12" r="1.3" fill="#fff"/><circle cx="12" cy="20" r="1.3" fill="#fff"/></svg>
+          </span>
+          <h3>The server picks the foot</h3>
+          <p>Each sign-in asks for the left or the right foot at random, so nobody can prepare the right one in advance.</p>
+        </li>
+        <li class="reason card reveal">
+          <span class="bead green" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h22"/><path d="M8 18c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/></svg>
+          </span>
+          <h3>Photos don't pass</h3>
+          <p>The toes have to move on cue while the heel and the floor around them stay put. A photo moves as one flat picture, however it's tilted or zoomed, and a finger over the toes is caught.</p>
+        </li>
+        <li class="reason card reveal">
+          <span class="bead glass" aria-hidden="true">
+            <img src="assets/img/logo-128.webp" width="38" height="38" alt="" loading="lazy">
+          </span>
+          <h3>The pig judge</h3>
+          <p>A small pig reacts to each scan. His reactions come from image texture, not your foot's size or shape, and play no part in the decision.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Developers -->
+  <section id="developers" aria-labelledby="dev-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <h2 id="dev-title">For developers</h2>
+        <p class="lead">Keep your password or SSO. Piggyback adds the feet check, decides on the server, and gives your backend a signed, one-time result.</p>
+      </div>
+      <div class="dev-grid">
+        <div class="dev-main card reveal">
+          <div class="tabs pb-seg" role="tablist" aria-label="Ways to add Piggyback">
+            <button type="button" role="tab" id="tab-embed" aria-controls="panel-embed" aria-selected="true"><span class="long">Web component</span><span class="short">Embed</span></button>
+            <button type="button" role="tab" id="tab-redirect" aria-controls="panel-redirect" aria-selected="false" tabindex="-1">Redirect</button>
+            <button type="button" role="tab" id="tab-oidc" aria-controls="panel-oidc" aria-selected="false" tabindex="-1"><span class="long">OpenID Connect</span><span class="short">OIDC</span></button>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-embed" aria-labelledby="tab-embed">
+<pre class="code" tabindex="0"><code><span class="c">&lt;!-- Drop the scanner into your own page --&gt;</span>
+<span class="t">&lt;script</span> <span class="a">type</span>=<span class="s">"module"</span>
+  <span class="a">src</span>=<span class="s">"https://feet.example.com/sdk/piggyback.js"</span><span class="t">&gt;&lt;/script&gt;</span>
+<span class="t">&lt;piggyback-auth</span>
+  <span class="a">server</span>=<span class="s">"https://feet.example.com"</span>
+  <span class="a">session-token</span>=<span class="s">"{{ session_token }}"</span><span class="t">&gt;&lt;/piggyback-auth&gt;</span>
+
+<span class="t">&lt;script&gt;</span>
+  document.<span class="k">querySelector</span>(<span class="s">"piggyback-auth"</span>)
+    .<span class="k">addEventListener</span>(<span class="s">"piggyback-complete"</span>, e =&gt;
+      <span class="k">exchange</span>(e.detail.code));
+<span class="t">&lt;/script&gt;</span></code></pre>
+            <p class="panel-note">Keeps people on your page. Theme it with <code>--pb-accent</code>, <code>--pb-bg</code> and friends; on a computer it offers the phone handoff by itself.</p>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-redirect" aria-labelledby="tab-redirect" hidden>
+<pre class="code" tabindex="0"><code><span class="c">// Start a session and send the user to the hosted page</span>
+<span class="k">const</span> s = <span class="k">await</span> feet.<span class="k">post</span>(<span class="s">"/v1/sessions"</span>, {
+  user_id, purpose: <span class="s">"verify"</span>, redirect_uri, state,
+});
+res.<span class="k">redirect</span>(s.hosted_url);
+
+<span class="c">// Back on your redirect_uri: swap the code for a signed result</span>
+<span class="k">const</span> { result_token } =
+  <span class="k">await</span> feet.<span class="k">post</span>(<span class="s">"/v1/token"</span>, { code });
+<span class="c">// Check iss, aud, sub and amr against the JWKS, then mark MFA done</span></code></pre>
+            <p class="panel-note">Works with any stack, like Duo's prompt. The result token is an ES256 JWT that lives five minutes.</p>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-oidc" aria-labelledby="tab-oidc" hidden>
+<pre class="code" tabindex="0"><code><span class="c"># Register your identity platform as a client</span>
+<span class="p">$ </span>node server/cli.js add-client --name <span class="s">"Okta"</span> \
+    --redirect-uri <span class="s">&lt;its callback URL&gt;</span>
+
+<span class="c"># Then point the platform at the discovery document</span>
+<span class="a">Issuer</span>     https://feet.example.com
+<span class="a">Discovery</span>  /.well-known/openid-configuration
+<span class="a">Scope</span>      openid
+<span class="a">Flows</span>      code + PKCE, or id_token by form_post</code></pre>
+            <div class="idps" aria-label="Identity platforms">
+              <span class="chip">Okta</span><span class="chip">Microsoft Entra ID</span><span class="chip">Ping</span><span class="chip">Keycloak</span><span class="chip">Auth0</span>
+            </div>
+            <p class="panel-note">The platform names the user, Piggyback checks the feet, and an <code>id_token</code> comes back. The per-platform recipes follow each vendor's documented model and haven't been run against a live tenant yet.</p>
+          </div>
+
+          <div class="links">
+            <a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md">Integration guide</a>
+            <a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md#api-reference">API reference</a>
+            <a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md#c-behind-an-identity-platform-openid-connect">Identity platforms</a>
+          </div>
+        </div>
+
+        <aside class="dev-side card reveal" aria-labelledby="home-title">
+          <h3 id="home-title">Self-hosted</h3>
+          <p>Piggyback runs on your server, with your keys. Set a domain and a key in <code>.env</code>, then:</p>
+          <div class="oneliner">
+            <code id="cmd"><span class="p">$ </span>docker compose up -d</code>
+            <button class="copy" type="button" data-copy="docker compose up -d" aria-label="Copy the command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="3"/><path d="M5 15V6a3 3 0 0 1 3-3h7"/></svg>
+              <span class="copy-label">Copy</span>
+            </button>
+          </div>
+          <ul class="facts">
+            <li><span>Docker image <code>ghcr.io/felixgonthier/two-feet-auth</code>, with automatic https through Caddy.</span></li>
+            <li><span>Or plain Node.js 20+ and <code>npm start</code>. No runtime dependencies.</span></li>
+            <li><span>Several instances can share sessions through Redis.</span></li>
+          </ul>
+          <div class="links">
+            <a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/DEPLOY.md">Deployment guide</a>
+            <a href="https://github.com/felixgonthier/two-feet-auth">Source on GitHub</a>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy & honesty -->
+  <section id="privacy" class="band-privacy" aria-labelledby="privacy-title">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <h2 id="privacy-title">Frames are checked, never recorded.</h2>
+      </div>
+      <div class="privacy-grid">
+        <div class="card reveal">
+          <span class="bead" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16s4.5-8 12-8 12 8 12 8-4.5 8-12 8S4 16 4 16Z"/><circle cx="16" cy="16" r="3.5"/><path d="M6 26 26 6"/></svg></span>
+          <div><h3>Looked at, then dropped</h3><p>Frames are analysed in memory and thrown away. Only measurements are kept: numbers that describe a foot, not a picture of one.</p></div>
+        </div>
+        <div class="card reveal">
+          <span class="bead pink" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="14" width="18" height="13" rx="4"/><path d="M11 14v-3a5 5 0 0 1 10 0v3"/><circle cx="16" cy="20.5" r="1.5" fill="#fff"/></svg></span>
+          <div><h3>Encrypted at rest</h3><p>Foot templates are encrypted with AES-256-GCM and bound to the app and the user they belong to.</p></div>
+        </div>
+        <div class="card reveal">
+          <span class="bead green" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15 16 6l11 9"/><path d="M8 13v12h16V13"/><path d="M14 25v-6h4v6"/></svg></span>
+          <div><h3>On your own server</h3><p>You run it, you hold the keys. Every decision is made there, and match scores never reach the browser.</p></div>
+        </div>
+        <div class="card reveal">
+          <span class="bead" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10h18"/><path d="M13 10V7h6v3"/><path d="M9 10l1.2 15a2 2 0 0 0 2 1.8h7.6a2 2 0 0 0 2-1.8L23 10"/></svg></span>
+          <div><h3>Gone on request</h3><p>One call, <code>DELETE /v1/users/:id</code>, removes someone's feet for good, when they close their account or want to enroll again.</p></div>
+        </div>
+      </div>
+      <div class="honest card reveal">
+        <img src="assets/img/logo-128.webp" width="76" height="76" alt="" loading="lazy">
+        <div>
+          <h3>Limits</h3>
+          <p>Piggyback is a prototype. Matching was tuned on drawn sample feet, not real ones, and a video of your toes played back in time with the prompts could pass the liveness check. Use it alongside a passkey or an authenticator app, not instead of one.</p>
+          <p>Foot templates are biometric data: get consent, honour deletion and check the law where your users are. <a class="pb-link" href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md#before-production">Before production</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" aria-labelledby="faq-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <h2 id="faq-title">Questions</h2>
+      </div>
+      <div class="faq">
+        <details class="card reveal">
+          <summary>Does it work with socks?</summary>
+          <p>No. It's looking for skin and toes, so socks off, on a plain floor. A floor lighter or darker than your skin and good light help most.</p>
+        </details>
+        <details class="card reveal">
+          <summary>Which foot do I show?</summary>
+          <p>Whichever one it asks for. At sign-in the server picks a foot, and the lens shows its outline so you know which one.</p>
+        </details>
+        <details class="card reveal">
+          <summary>Can someone just use a photo of my feet?</summary>
+          <p>No. After the match, the scanner asks for toes up, down and up again, and checks that only the toes changed. A photo fails however it's moved. A video played back in time with the prompts could pass, which is why Piggyback is a second factor next to your password, not the only one.</p>
+        </details>
+        <details class="card reveal">
+          <summary>My laptop's camera can't see my feet.</summary>
+          <p>On a computer it shows a QR code instead. Scan it with your phone, show your feet there, and the computer carries on by itself.</p>
+        </details>
+        <details class="card reveal">
+          <summary>What exactly gets stored?</summary>
+          <p>Measurements, not pictures: a few hundred numbers per frame, a couple of frames per foot, encrypted and tied to the app and the user. The frames themselves are analysed in memory and dropped.</p>
+        </details>
+        <details class="card reveal">
+          <summary>What if I can't, or would rather not, use my feet?</summary>
+          <p>Apps using Piggyback should always keep another way in, like a passkey or an authenticator app. The hosted page can offer “Use another sign-in method”.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final call -->
+  <section class="final" aria-labelledby="final-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="final-card card reveal">
+        <div class="copytext">
+          <h2 id="final-title">Try it</h2>
+          <p class="lead">Sign in to Piggy Bank, the demo app, with any name and the password <code>demo</code>. Then show it your feet.</p>
+          <div class="cta">
+            <a class="pb-btn big" href="https://demo.piggylover.com">
+              Try the demo
+              <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="pb-btn big secondary" href="https://github.com/felixgonthier/two-feet-auth">Self-host it</a>
+          </div>
+        </div>
+        <img src="assets/img/mascot-point.webp" width="360" height="503" loading="lazy" decoding="async" alt="The Piggyback pig, winking and pointing at the demo button.">
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot-nav">
+  <div class="wrap">
+    <div class="about">
+      <a class="lockup" href="#top">
+        <img src="assets/img/logo-128.webp" width="38" height="38" alt="" loading="lazy">
+        Piggyback
+      </a>
+      <p>Two-Feet Authentication. Frames are checked, never recorded.</p>
+    </div>
+    <div>
+      <h4>Try it</h4>
+      <ul>
+        <li><a href="https://demo.piggylover.com">Live demo</a></li>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#faq">Questions</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Build</h4>
+      <ul>
+        <li><a href="https://github.com/felixgonthier/two-feet-auth">GitHub</a></li>
+        <li><a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md">Integration guide</a></li>
+        <li><a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/DEPLOY.md">Deployment guide</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Trust</h4>
+      <ul>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="https://github.com/felixgonthier/two-feet-auth/blob/main/docs/INTEGRATION.md#before-production">Before production</a></li>
+        <li><a href="https://github.com/felixgonthier/two-feet-auth/blob/main/brand/BRAND.md">Brand</a></li>
+      </ul>
+    </div>
+    <p class="fine">Piggyback is a prototype. Keep another factor available for people who can't or won't use their feet.</p>
+  </div>
+</footer>
+
+<script>
+  // Header glass once the page scrolls.
+  const header = document.getElementById("top");
+  const onScroll = () => header.classList.toggle("scrolled", scrollY > 8);
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  // Tabs: click, and arrow keys between them.
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  const select = (tab, focus) => {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on);
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    }
+    if (focus) tab.focus();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => select(t));
+    t.addEventListener("keydown", e => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (step) { e.preventDefault(); select(tabs[(i + step + tabs.length) % tabs.length], true); }
+      if (e.key === "Home") { e.preventDefault(); select(tabs[0], true); }
+      if (e.key === "End") { e.preventDefault(); select(tabs[tabs.length - 1], true); }
+    });
+  });
+
+  // Copy the one-liner.
+  for (const b of document.querySelectorAll("[data-copy]")) {
+    b.addEventListener("click", async () => {
+      const label = b.querySelector(".copy-label");
+      try { await navigator.clipboard.writeText(b.dataset.copy); label.textContent = "Copied"; }
+      catch { label.textContent = "Select it"; }
+      setTimeout(() => { label.textContent = "Copy"; }, 1800);
+    });
+  }
+</script>
+</body>
+</html>

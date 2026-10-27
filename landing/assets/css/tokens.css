@@ -1,0 +1,70 @@
+/* Piggyback design tokens. Blue = act, green = done, pink = brand and "you are here".
+   Round and glassy: frosted surfaces on a soft wash of the three colours. See brand/BRAND.md. */
+:root {
+  --pb-paper: #FFFFFF;
+  --pb-ink: #14161A;        /* text */
+  --pb-muted: #555B66;
+  --pb-hair: #DADDE3;       /* quiet dividers */
+  --pb-blue: #2F6BFF;       /* buttons, links, focus */
+  --pb-blue-tint: #E4ECFF;
+  --pb-green: #4CD992;      /* success, done */
+  --pb-green-ink: #11774A;  /* green text on white */
+  --pb-green-tint: #DDF6E8;
+  --pb-pink: #FF8FB1;       /* the piggy, the current step */
+  --pb-pink-deep: #E5578A;
+  --pb-pink-tint: #FFE6EF;
+  --pb-bad: #D93A2B;
+  --pb-glass: rgba(255, 255, 255, 0.62);       /* frosted surfaces */
+  --pb-glass-edge: rgba(255, 255, 255, 0.85);  /* the bright rim on glass */
+  --pb-glass-line: rgba(20, 22, 26, 0.10);     /* a faint outer line so glass reads on white */
+  --pb-lift: 0 10px 30px -12px rgba(20, 22, 26, 0.35); /* soft shadow under raised glass */
+  --pb-btn-glass: rgba(255, 255, 255, 0.66);       /* secondary buttons */
+  --pb-btn-glass-hover: rgba(255, 255, 255, 0.86);
+  --pb-btn-shadow: rgba(20, 22, 26, 0.16);
+  --pb-btn-deepen: 0;                              /* 1 in the dark: button fills go deeper than link colours */
+  --pb-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --pb-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pb-paper: #111318;
+    --pb-ink: #F3F4F6;
+    --pb-muted: #A2A8B4;
+    --pb-blue: #6B95FF;      /* lighter, so links read on dark */
+    --pb-hair: #2B2F37;
+    --pb-blue-tint: #1A2547;
+    --pb-green-ink: #3BD47F;
+    --pb-green-tint: #15301F;
+    --pb-pink-tint: #3A1E2A;
+    --pb-bad: #FF7A6B;
+    --pb-glass: rgba(255, 255, 255, 0.07);
+    --pb-glass-edge: rgba(255, 255, 255, 0.18);
+    --pb-glass-line: rgba(255, 255, 255, 0.10);
+    --pb-lift: 0 10px 30px -12px rgba(0, 0, 0, 0.7);
+    --pb-btn-glass: rgba(255, 255, 255, 0.1);
+    --pb-btn-glass-hover: rgba(255, 255, 255, 0.14);
+    --pb-btn-shadow: rgba(0, 0, 0, 0.45);
+    --pb-btn-deepen: 1;
+  }
+}
+/* An explicit theme choice wins over the system setting. */
+:root[data-theme="dark"] {
+  --pb-paper: #111318;
+  --pb-ink: #F3F4F6;
+  --pb-muted: #A2A8B4;
+  --pb-blue: #6B95FF;
+  --pb-hair: #2B2F37;
+  --pb-blue-tint: #1A2547;
+  --pb-green-ink: #3BD47F;
+  --pb-green-tint: #15301F;
+  --pb-pink-tint: #3A1E2A;
+  --pb-bad: #FF7A6B;
+  --pb-glass: rgba(255, 255, 255, 0.07);
+  --pb-glass-edge: rgba(255, 255, 255, 0.18);
+  --pb-glass-line: rgba(255, 255, 255, 0.10);
+  --pb-lift: 0 10px 30px -12px rgba(0, 0, 0, 0.7);
+  --pb-btn-glass: rgba(255, 255, 255, 0.1);
+  --pb-btn-glass-hover: rgba(255, 255, 255, 0.14);
+  --pb-btn-shadow: rgba(0, 0, 0, 0.45);
+  --pb-btn-deepen: 1;
+}

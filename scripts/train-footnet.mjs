@@ -1,0 +1,105 @@
+// Trains FootNet, the tiny per-pixel foot model in core/engine.js, and writes core/footnet.js.
+//   npm install && node scripts/train-footnet.mjs        (needs Chrome, like the browser tests)
+// Training data is drawn feet (sdk/sample-camera.js) over many floors, skin tones, lights and shadows; the true foot
+// outline comes from drawing the same pose again on a magenta floor. Real photos would train it better.
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import puppeteer from "puppeteer-core";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const IMAGES = Number(process.env.IMAGES || 600), HIDDEN = 12, EPOCHS = 8;
+
+// The browser imports the real modules, so serve the repo.
+const server = http.createServer((req, res) => {
+  const file = path.join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname));
+  if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { "content-type": file.endsWith(".js") ? "text/javascript" : "text/plain" });
+  res.end(fs.readFileSync(file));
+}).listen(0);
+const base = `http://localhost:${server.address().port}`;
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new" });
+const page = await browser.newPage();
+page.on("console", m => console.log(m.text()));
+await page.goto(base + "/package.json");
+
+const net = await page.evaluate(async (base, IMAGES, HIDDEN, EPOCHS) => {
+  const cam = await import(base + "/sdk/sample-camera.js");
+  const eng = await import(base + "/core/engine.js");
+  const { toLab, footFeatures, floorShadows } = eng._training;
+  let seed = 12345;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const SKINS = [[240, 210, 192], [224, 172, 140], [190, 134, 104], [140, 94, 70], [96, 62, 46], [70, 46, 36]];
+  const mixRgb = (a, b, t) => a.map((v, i) => Math.round(v * (1 - t) + b[i] * t));
+  const roi = eng.roiFor(cam.SW, cam.SH), [w, h] = eng.procSize(roi.w, roi.h), n = w * h, F = 10;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  const crop = img => { g.drawImage(img, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+  const X = [], Y = [], valX = [], valY = [];
+  for (let k = 0; k < IMAGES; k++) {
+    const pose = cam.samplePose(rand);
+    // Floors: anything from near-white to near-black, often warm and close to skin, which is the hard case.
+    const warm = rand() < 0.6, v = 25 + rand() * 220;
+    pose.floor = warm ? [v, v * (0.7 + rand() * 0.25), v * (0.5 + rand() * 0.35)].map(Math.round) : [v * (0.6 + rand() * 0.4), v * (0.6 + rand() * 0.4), v * (0.6 + rand() * 0.4)].map(Math.round);
+    const t = rand() * (SKINS.length - 1), skin = mixRgb(SKINS[Math.floor(t)], SKINS[Math.ceil(t)], t % 1);
+    const side = rand() < 0.5 ? "L" : "R";
+    const px = crop(cam.drawSample({ pose, skin, rand, side }));
+    const truth = crop(cam.drawSample({ pose: { ...pose, floor: [255, 0, 255], split: null, clutter: [], cast: null, light: { ang: 0, gain: 1, slope: 0 } }, skin, rand: () => 0.5, side }));
+    const { L, A, B } = toLab(new Uint8Array(px.buffer), n);
+    const feats = footFeatures(L, A, B, w, h, floorShadows(L, A, B, w, h));
+    const isFoot = i => !(truth[i * 4] > 200 && truth[i * 4 + 1] < 60 && truth[i * 4 + 2] > 200);
+    const toVal = k % 7 === 0;
+    for (let s = 0; s < 700; s++) {
+      // Half foot, half floor, so the rare class isn't drowned out.
+      let i, want = s % 2 === 0;
+      for (let tries = 0; tries < 50; tries++) { i = Math.floor(rand() * n); if (isFoot(i) === want) break; }
+      (toVal ? valX : X).push(feats.slice(i * F, i * F + F));
+      (toVal ? valY : Y).push(isFoot(i) ? 1 : 0);
+    }
+    if (k % 100 === 99) console.log(`drew ${k + 1}/${IMAGES} images`);
+  }
+  // A 10 → HIDDEN → 1 network, leaky ReLU, trained with Adam on log-loss.
+  const H = HIDDEN, W1 = new Float32Array(H * F).map(() => (rand() - 0.5) * 0.6), b1 = new Float32Array(H), W2 = new Float32Array(H).map(() => (rand() - 0.5) * 0.6);
+  let b2 = 0;
+  const params = [W1, b1, W2], m = params.map(p => new Float32Array(p.length)), vv = params.map(p => new Float32Array(p.length));
+  let mb2 = 0, vb2 = 0, step = 0;
+  const forward = (x, hid) => { let z = b2; for (let j = 0; j < H; j++) { let a = b1[j]; for (let q = 0; q < F; q++) a += W1[j * F + q] * x[q]; hid[j] = a; z += W2[j] * (a > 0 ? a : 0.01 * a); } return 1 / (1 + Math.exp(-z)); };
+  const hid = new Float32Array(H), order = X.map((_, i) => i);
+  const accuracy = (XS, YS) => { let ok = 0; for (let i = 0; i < XS.length; i++) ok += (forward(XS[i], hid) > 0.5) === (YS[i] === 1); return ok / XS.length; };
+  for (let ep = 0; ep < EPOCHS; ep++) {
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    const lr = 0.01 * Math.pow(0.6, ep), BATCH = 256;
+    for (let s = 0; s < order.length; s += BATCH) {
+      const gW1 = new Float32Array(H * F), gb1 = new Float32Array(H), gW2 = new Float32Array(H);
+      let gb2 = 0;
+      const end = Math.min(order.length, s + BATCH);
+      for (let t = s; t < end; t++) {
+        const x = X[order[t]], y = Y[order[t]], p = forward(x, hid), d = p - y;
+        gb2 += d;
+        for (let j = 0; j < H; j++) {
+          const a = hid[j], act = a > 0 ? a : 0.01 * a, da = d * W2[j] * (a > 0 ? 1 : 0.01);
+          gW2[j] += d * act; gb1[j] += da;
+          for (let q = 0; q < F; q++) gW1[j * F + q] += da * x[q];
+        }
+      }
+      step++;
+      const bs = end - s, grads = [gW1, gb1, gW2];
+      params.forEach((P, pi) => { for (let q = 0; q < P.length; q++) { const gq = grads[pi][q] / bs; m[pi][q] = 0.9 * m[pi][q] + 0.1 * gq; vv[pi][q] = 0.999 * vv[pi][q] + 0.001 * gq * gq; P[q] -= lr * (m[pi][q] / (1 - 0.9 ** step)) / (Math.sqrt(vv[pi][q] / (1 - 0.999 ** step)) + 1e-8); } });
+      const gq = gb2 / bs; mb2 = 0.9 * mb2 + 0.1 * gq; vb2 = 0.999 * vb2 + 0.001 * gq * gq; b2 -= lr * (mb2 / (1 - 0.9 ** step)) / (Math.sqrt(vb2 / (1 - 0.999 ** step)) + 1e-8);
+    }
+    console.log(`epoch ${ep + 1}: pixel accuracy ${(accuracy(X, Y) * 100).toFixed(1)}% train, ${(accuracy(valX, valY) * 100).toFixed(1)}% held out`);
+  }
+  const r = a => Array.from(a, x => Math.round(x * 1e4) / 1e4);
+  return { F, H, W1: r(W1), b1: r(b1), W2: r(W2), b2: Math.round(b2 * 1e4) / 1e4, samples: X.length };
+}, base, IMAGES, HIDDEN, EPOCHS);
+
+await browser.close();
+server.close();
+const { samples, ...weights } = net;
+fs.writeFileSync(path.join(ROOT, "core/footnet.js"), `// FootNet weights: ${weights.F} inputs, ${weights.H} hidden units, ${weights.F * weights.H + 2 * weights.H + 1} numbers.
+// Written by scripts/train-footnet.mjs from ${IMAGES} drawn feet (${samples} pixels). Don't edit by hand; retrain.
+export const FOOTNET = ${JSON.stringify(weights)};
+`);
+console.log("wrote core/footnet.js");

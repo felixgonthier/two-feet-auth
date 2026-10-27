@@ -1,0 +1,162 @@
+/* Piggyback page pieces: the backdrop, a centred column, the logo lockup, frosted panels, chips, the success check, code and toasts.
+   Needs tokens.css; controls live in controls.css. The demo, the hosted page and the sign-in pages are all built from these. */
+:root { color-scheme: light dark; }
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; color: var(--pb-ink); font: 16px/1.5 var(--pb-font); -webkit-font-smoothing: antialiased; }
+
+/* A soft wash of the three brand colours for glass to sit on. */
+.pb-backdrop {
+  background:
+    radial-gradient(42rem 28rem at 8% -6%, color-mix(in srgb, var(--pb-pink) 30%, transparent), transparent 70%),
+    radial-gradient(36rem 26rem at 100% 10%, color-mix(in srgb, var(--pb-blue) 20%, transparent), transparent 70%),
+    radial-gradient(40rem 30rem at 50% 108%, color-mix(in srgb, var(--pb-green) 18%, transparent), transparent 70%),
+    var(--pb-paper);
+  background-attachment: fixed;
+}
+
+/* One centred column. .wide for pages with two columns of content; .middle centres it vertically too. */
+.pb-page {
+  --pb-page-width: 440px;
+  width: 100%;
+  max-width: calc(var(--pb-page-width) + 32px);
+  margin: 0 auto;
+  padding-block: 32px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+.pb-page.wide { --pb-page-width: 760px; }
+.pb-page.middle { min-height: 100vh; align-content: center; }
+
+/* The logo and name together. */
+.pb-lockup { display: inline-flex; align-items: center; gap: 10px; color: var(--pb-ink); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+.pb-lockup img { width: 44px; height: 44px; }
+
+/* A frosted panel for related content or controls; every child shares its edges. */
+.pb-panel {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--pb-glass-edge);
+  border-radius: 28px;
+  background: var(--pb-glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--pb-glass-edge), 0 0 0 1px var(--pb-glass-line), var(--pb-lift);
+}
+.pb-panel.tight { padding: 14px; }
+.pb-panel > form { display: grid; gap: 14px; margin: 0; }
+
+/* Text */
+.pb-eyebrow { margin: 0; color: var(--pb-muted); font-size: 13px; font-weight: 600; }
+.pb-title { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.pb-text { margin: 0; color: var(--pb-muted); }
+.pb-rule { width: 100%; margin: 0; border: 0; border-top: 1px solid var(--pb-glass-line); }
+
+/* A small frosted chip for a short note or a state. .good and .bad tint it; .dot adds a status dot. */
+.pb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 5px 14px;
+  border: 1px solid var(--pb-glass-edge);
+  border-radius: 999px;
+  background: var(--pb-glass);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 0 1px var(--pb-glass-line);
+  color: var(--pb-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pb-chip.dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.pb-chip.good { color: var(--pb-green-ink); background: color-mix(in srgb, var(--pb-green) 10%, var(--pb-glass)); }
+.pb-chip.bad { color: var(--pb-bad); background: color-mix(in srgb, var(--pb-bad) 9%, var(--pb-glass)); }
+
+/* Code and token dumps. */
+.pb-code {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--pb-glass-edge);
+  border-radius: 20px;
+  background: var(--pb-glass);
+  box-shadow: 0 0 0 1px var(--pb-glass-line);
+  color: var(--pb-ink);
+  font: 13px/1.55 var(--pb-mono);
+  white-space: pre;
+  overflow: auto;
+}
+
+/* Success: a glossy green disc with a white check, matching the judge's green tile on a match.
+   <span class="pb-check" role="img" aria-label="Done"></span>; .small for inline use. */
+.pb-check {
+  display: inline-grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 60%), var(--pb-green);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 12px 28px -12px var(--pb-green);
+  animation: pb-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.pb-check::after { content: ""; width: 38%; height: 20%; margin-top: -8%; border: solid #FFFFFF; border-width: 0 0 4px 4px; border-radius: 2px; transform: rotate(-45deg); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2)); }
+@keyframes pb-pop { from { transform: scale(0.5); opacity: 0; } }
+
+
+/* Toasts float at the bottom of the screen: frosted glass, an icon for the kind, the action inline.
+   <div class="pb-toasts"><div class="pb-toast good"><span class="ic">✓</span><span class="msg">…</span><span class="acts">…</span></div></div> */
+.pb-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  width: min(500px, calc(100% - 32px));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+.pb-toast {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--pb-glass-edge);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--pb-paper) 80%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: 0 0 0 1px var(--pb-glass-line), 0 18px 40px -16px rgba(20, 22, 26, 0.45);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  animation: pb-toast-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+/* Icons are small glass beads in the kind's colour, like the scanner's check. */
+.pb-toast .ic { --tint: var(--pb-blue); flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%), var(--tint); color: #FFFFFF; font-size: 14px; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 4px 10px -6px var(--tint); }
+.pb-toast.good .ic { --tint: var(--pb-green); }
+.pb-toast.bad .ic { --tint: var(--pb-bad); }
+.pb-toast .msg { flex: 1 1 180px; min-width: 0; }
+.pb-toast .acts { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.pb-toast .pb-btn.small { min-height: 34px; padding: 0 14px; font-size: 13px; }
+.pb-toast .x { appearance: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--pb-muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.pb-toast .x:hover { background: var(--pb-glass-line); color: var(--pb-ink); }
+.pb-toast .x:focus-visible { outline: 2px solid var(--pb-blue); outline-offset: 1px; }
+@keyframes pb-toast-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
+/* Leave room so a toast never covers the end of the page. */
+body:has(.pb-toast:not([hidden])) .pb-page { padding-bottom: 180px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-toast, .pb-check { animation: none; }
+}

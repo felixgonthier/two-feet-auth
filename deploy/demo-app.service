@@ -1,0 +1,21 @@
+# systemd unit for the optional "Piggy Bank" example app. Copy to /etc/systemd/system/demo-app.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now demo-app
+[Unit]
+Description=Piggyback example app (Piggy Bank)
+After=piggyback.service
+
+[Service]
+User=piggyback
+Group=piggyback
+WorkingDirectory=/opt/piggyback/app
+EnvironmentFile=/etc/piggyback/demo-app.env
+ExecStart=/usr/bin/node examples/demo-app/server.js
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

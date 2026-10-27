@@ -1,0 +1,19 @@
+# Caddy gets and renews the https certificates by itself. Copy to /etc/caddy/Caddyfile, replace example.com
+# with your domain, then: sudo systemctl reload caddy
+
+# The Piggyback service: API, hosted page, phone page and OpenID Connect endpoints. Required.
+feet.example.com {
+	reverse_proxy localhost:8787
+}
+
+# Optional: the "Piggy Bank" example app.
+demo.example.com {
+	reverse_proxy localhost:3000
+}
+
+# Optional: the no-server demo page (build it with `npm run build:demo`).
+example.com {
+	root * /opt/piggyback/app/dist
+	rewrite / /piggyback-demo.html
+	file_server
+}

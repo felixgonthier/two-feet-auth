@@ -1,0 +1,47 @@
+# Piggyback with automatic https. Copy .env.example to .env, fill it in, then:
+#   docker compose up -d
+#   docker compose exec piggyback piggyback add-client --name "Your app" --redirect-uri https://your.app/mfa/callback
+# Add the example app with: docker compose --profile demo up -d (and CADDYFILE=./deploy/Caddyfile.docker-demo in .env)
+services:
+  piggyback:
+    image: ghcr.io/felixgonthier/two-feet-auth:latest
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://${PIGGYBACK_DOMAIN:?set PIGGYBACK_DOMAIN in .env}
+      PIGGYBACK_DATA_KEY: ${PIGGYBACK_DATA_KEY:?set PIGGYBACK_DATA_KEY in .env}
+      PIGGYBACK_ALLOW_SAMPLE: ${PIGGYBACK_ALLOW_SAMPLE:-}
+    volumes:
+      - piggyback-data:/data
+
+  # Optional: "Piggy Bank", an example app with password + feet.
+  demo-app:
+    profiles: [demo]
+    image: ghcr.io/felixgonthier/two-feet-auth:latest
+    build: .
+    restart: unless-stopped
+    command: ["node", "examples/demo-app/server.js"]
+    environment:
+      PORT: 3000
+      APP_URL: https://${DEMO_DOMAIN:-demo.invalid}
+      FEET_URL: https://${PIGGYBACK_DOMAIN}
+      CLIENT_ID: ${DEMO_CLIENT_ID:-}
+      CLIENT_SECRET: ${DEMO_CLIENT_SECRET:-}
+
+  # Gets and renews https certificates for the domains in .env.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      PIGGYBACK_DOMAIN: ${PIGGYBACK_DOMAIN}
+      DEMO_DOMAIN: ${DEMO_DOMAIN:-}
+    volumes:
+      - ${CADDYFILE:-./deploy/Caddyfile.docker}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  piggyback-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Run Piggyback admin commands with the service's settings (DATA_DIR, PIGGYBACK_DATA_KEY), as the service user:
+#   sudo -u piggyback /opt/piggyback/app/deploy/pb add-client --name "Piggy Bank" --redirect-uri https://demo.example.com/mfa/callback
+#   sudo -u piggyback /opt/piggyback/app/deploy/pb list-clients
+#   sudo -u piggyback /opt/piggyback/app/deploy/pb delete-user --client pb_… --user alice@example.com
+set -e
+set -a
+. "${PIGGYBACK_ENV:-/etc/piggyback/piggyback.env}"
+set +a
+exec node "$(dirname "$0")/../server/cli.js" "$@"

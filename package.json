@@ -1,0 +1,35 @@
+{
+  "name": "piggyback",
+  "version": "0.1.0",
+  "description": "Piggyback, the new 2FA (Two-Feet Authentication). A foot-scan second factor: a verification service, a drop-in <piggyback-auth> element and a hosted page that any login flow can call.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felixgonthier/two-feet-auth.git"
+  },
+  "homepage": "https://github.com/felixgonthier/two-feet-auth#readme",
+  "keywords": [
+    "2fa",
+    "mfa",
+    "authentication",
+    "biometrics",
+    "openid-connect",
+    "web-component"
+  ],
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "add-client": "node server/cli.js add-client",
+    "demo": "node examples/demo-app/server.js",
+    "test": "node --check sdk/piggyback.js && node --check sdk/hosted.js && node --check sdk/handoff.js && node --check sdk/local-backend.js && node --check sdk/sample-camera.js && node --test test/api.test.js test/oidc.test.js test/state.test.js",
+    "test:e2e": "node test/e2e.js",
+    "build:demo": "node scripts/build-single-file.mjs",
+    "train:footnet": "node scripts/train-footnet.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}

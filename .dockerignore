@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+data
+dist
+docs
+test
+demo
+scripts
+deploy/*
+!deploy/docker-entrypoint.sh
+!deploy/piggyback-admin.sh
+*.md

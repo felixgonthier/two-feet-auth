@@ -1065,14 +1065,20 @@ export function motionOf(G0, R0, w, h, zone, pivot) {
 // What one frame shows, against the matched (toes down) frame:
 //   up       the toes changed well beyond how well the rest fits (curled, or lifted), and nothing crossed the ring around them
 //   down     the toes look as they did when matched (relaxed)
-//   blocked  something changed in the ring around the toes (a finger, a hand, the picture itself bending)
-//   between  anything else (half-lifted, blurred)
-export const LIVE = { excess: 5, ratio: 3, still: 2, guard: 2.5, guardRatio: 1.4, run: 2 };
+//   blocked  something changed in the ring around the toes more than the toes themselves (a finger, a hand, the
+//            picture itself bending). The ring sits on the foot's edge, the sharpest thing in the picture, so on a real
+//            foot it always changes some with the toes (a shadow, a pixel of misalignment); only more than them counts.
+//   between  anything else (half-curled, blurred)
+// "down" allows for how well the rest of the foot fits: after a hand-held phone has moved a little, nothing comes back
+// to exactly what it was.
+// "up" asks the toes to change clearly more than the rest of the foot does: 2.5 times as much, once a hand-held phone
+// has settled at a fit of 7 or 8, means a curl of 20 or so, which a stiff foot still manages; a photo moves as one piece.
+export const LIVE = { excess: 5, ratio: 2.5, still: 2, stillRatio: 0.5, guard: 2.5, guardRatio: 1.4, run: 2 };
 export function toeState(m) {
   if (!(m.rest < Infinity && m.toes < Infinity)) return "between";
-  if (m.guard > LIVE.guard + LIVE.guardRatio * m.rest) return "blocked";
+  if (m.guard > LIVE.guard + LIVE.guardRatio * m.rest && m.guard > m.toes) return "blocked";
   if (m.toes - m.rest >= LIVE.excess && m.toes >= LIVE.ratio * m.rest) return "up";
-  if (m.toes - m.rest <= LIVE.still) return "down";
+  if (m.toes - m.rest <= Math.max(LIVE.still, LIVE.stillRatio * m.rest)) return "down";
   return "between";
 }
 // The cues the scanner shows after a match, in order. Each must be answered by LIVE.run frames in a row.

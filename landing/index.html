@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Piggyback · The new 2FA (Two-Feet Authentication)</title>
-  <meta name="description" content="Piggyback is a second factor you pass with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in. Self-hosted, open on GitHub, and frames are checked, never recorded.">
+  <meta name="description" content="Piggyback is a second factor you pass with your bare feet. Show your phone the foot it asks for, curl your toes when asked, and you're in. Self-hosted, open on GitHub, and frames are checked, never recorded.">
   <link rel="canonical" href="https://piggylover.com/">
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
@@ -14,14 +14,14 @@
   <meta property="og:site_name" content="Piggyback">
   <meta property="og:url" content="https://piggylover.com/">
   <meta property="og:title" content="Piggyback · The new 2FA (Two-Feet Authentication)">
-  <meta property="og:description" content="Sign in with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in.">
+  <meta property="og:description" content="Sign in with your bare feet. Show your phone the foot it asks for, curl your toes when asked, and you're in.">
   <meta property="og:image" content="https://piggylover.com/assets/og.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Piggyback, the new 2FA: Two-Feet Authentication. A cartoon pig next to a phone-shaped scanner with a foot inside.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Piggyback · The new 2FA (Two-Feet Authentication)">
-  <meta name="twitter:description" content="Sign in with your bare feet. Show your phone the foot it asks for, lift your toes when asked, and you're in.">
+  <meta name="twitter:description" content="Sign in with your bare feet. Show your phone the foot it asks for, curl your toes when asked, and you're in.">
   <meta name="twitter:image" content="https://piggylover.com/assets/og.jpg">
   <meta name="twitter:image:alt" content="Piggyback, the new 2FA: Two-Feet Authentication.">
 
@@ -64,7 +64,7 @@
           <span class="line" aria-hidden="true">Two-<span class="fix"><span class="old">Factor</span><span class="new">Feet</span></span></span>
           <span class="line" aria-hidden="true">Authentication.</span>
         </h1>
-        <p class="lead"><strong>Piggyback is a second factor you pass barefoot.</strong> Show your phone the foot it asks for, lift your toes when it says so, and you're in. It sits on top of the login you already have.</p>
+        <p class="lead"><strong>Piggyback is a second factor you pass barefoot.</strong> Show your phone the foot it asks for, curl your toes when it says so, and you're in. It sits on top of the login you already have.</p>
         <div class="cta">
           <a class="pb-btn big" href="https://demo.piggylover.com">
             Try the demo
@@ -175,7 +175,7 @@
           <div class="status" aria-hidden="true">
             <span class="chip s-search"><span class="dot"></span>Show your right foot</span>
             <span class="chip s-hold"><span class="dot"></span>Hold still…</span>
-            <span class="chip s-wiggle"><span class="dot"></span>Lift your toes</span>
+            <span class="chip s-wiggle"><span class="dot"></span>Curl your toes</span>
             <span class="chip s-match"><span class="dot"></span>Matched</span>
           </div>
         </figure>
@@ -202,7 +202,7 @@
     <div class="wrap">
       <div class="section-head center reveal">
         <h2 id="how-title">How it works</h2>
-        <p class="lead">It runs in the phone's browser, so there's no app to install. You need a plain floor and bare feet.</p>
+        <p class="lead">Put your best foot forward. It runs in the phone's browser, so there's no app to install: a plain floor and bare feet will do.</p>
       </div>
       <ol class="steps">
         <li class="step card reveal">
@@ -231,8 +231,8 @@
           </figure>
           <div>
             <span class="step-num" aria-hidden="true">3</span>
-            <h3>Lift your toes when asked</h3>
-            <p>Once it matches, keep your heel down and follow the prompts: toes up, down, then up again. A photo of your feet can't follow them.</p>
+            <h3>Curl your toes when asked</h3>
+            <p>Once it matches, keep your heel down and follow the prompts: curl your toes, relax them, curl again. A photo of your feet can't follow them.</p>
           </div>
         </li>
       </ol>
@@ -274,7 +274,7 @@
             <svg viewBox="0 0 32 32" fill="#fff"><path d="M10.2 13.6c-2.3.2-3.6 2.6-3.5 6 .1 3.7 1.4 7.4 4 7.2 2.4-.2 2.5-3.5 2-6.4-.5-3-.6-7-2.5-6.8Z"/><circle cx="9.3" cy="9.8" r="2.1"/><circle cx="12.6" cy="9.4" r="1.4"/><circle cx="14.6" cy="10.6" r="1.2"/><circle cx="15.9" cy="12.4" r="1"/><path d="M22.4 7.8c2.3.2 3.6 2.6 3.5 6-.1 3.7-1.4 7.4-4 7.2-2.4-.2-2.5-3.5-2-6.4.5-3 .6-7 2.5-6.8Z" opacity=".75"/></svg>
           </span>
           <h3>Nothing to carry</h3>
-          <p>No key fob and no code to retype. You need your phone's camera and your feet.</p>
+          <p>No key fob to foot the bill for, no code to retype. Your phone's camera and the feet you walked in on.</p>
         </li>
         <li class="reason card reveal">
           <span class="bead pink" aria-hidden="true">
@@ -339,11 +339,11 @@
 });
 res.<span class="k">redirect</span>(s.hosted_url);
 
-<span class="c">// Back on your redirect_uri: swap the code for a signed result</span>
+<span class="c">// Back on your redirect_uri: swap the code for a signed result toeken</span>
 <span class="k">const</span> { result_token } =
   <span class="k">await</span> feet.<span class="k">post</span>(<span class="s">"/v1/token"</span>, { code });
 <span class="c">// Check iss, aud, sub and amr against the JWKS, then mark MFA done</span></code></pre>
-            <p class="panel-note">Works with any stack, like Duo's prompt. The result token is an ES256 JWT that lives five minutes.</p>
+            <p class="panel-note">Works with any stack, like Duo's prompt. The result toeken (fine, token: an ES256 JWT) lives five minutes.</p>
           </div>
 
           <div class="tab-panel" role="tabpanel" id="panel-oidc" aria-labelledby="tab-oidc" hidden>
@@ -371,7 +371,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
 
         <aside class="dev-side card reveal" aria-labelledby="home-title">
           <h3 id="home-title">Self-hosted</h3>
-          <p>Piggyback runs on your server, with your keys. Set a domain and a key in <code>.env</code>, then:</p>
+          <p>This little piggy stays home: Piggyback runs on your server, with your keys. Set a domain and a key in <code>.env</code>, then:</p>
           <div class="oneliner">
             <code id="cmd"><span class="p">$ </span>docker compose up -d</code>
             <button class="copy" type="button" data-copy="docker compose up -d" aria-label="Copy the command">
@@ -398,6 +398,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
     <div class="wrap">
       <div class="section-head reveal">
         <h2 id="privacy-title">Frames are checked, never recorded.</h2>
+        <p class="lead">No digital footprint: what's kept is a few hundred numbers about your foot, not a picture of it.</p>
       </div>
       <div class="privacy-grid">
         <div class="card reveal">
@@ -437,7 +438,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
       <div class="faq">
         <details class="card reveal">
           <summary>Does it work with socks?</summary>
-          <p>No. It's looking for skin and toes, so socks off, on a plain floor. A floor lighter or darker than your skin and good light help most.</p>
+          <p>No, it can't count toes through cotton. Socks off, on a plain floor; a floor lighter or darker than your skin and good light help most.</p>
         </details>
         <details class="card reveal">
           <summary>Which foot do I show?</summary>
@@ -445,7 +446,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
         </details>
         <details class="card reveal">
           <summary>Can someone just use a photo of my feet?</summary>
-          <p>No. After the match, the scanner asks for toes up, down and up again, and checks that only the toes changed. A photo fails however it's moved. A video played back in time with the prompts could pass, which is why Piggyback is a second factor next to your password, not the only one.</p>
+          <p>No. After the match, the scanner asks you to curl your toes, relax them and curl again, and checks that only the toes changed. A photo fails however it's moved. A video played back in time with the prompts could pass, which is why Piggyback is a second factor next to your password, not the only one.</p>
         </details>
         <details class="card reveal">
           <summary>My laptop's camera can't see my feet.</summary>
@@ -468,7 +469,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
     <div class="wrap">
       <div class="final-card card reveal">
         <div class="copytext">
-          <h2 id="final-title">Try it</h2>
+          <h2 id="final-title">Step right in</h2>
           <p class="lead">Sign in to Piggy Bank, the demo app, with any name and the password <code>demo</code>. Then show it your feet.</p>
           <div class="cta">
             <a class="pb-btn big" href="https://demo.piggylover.com">
@@ -517,7 +518,7 @@ res.<span class="k">redirect</span>(s.hosted_url);
         <li><a href="https://github.com/felixgonthier/two-feet-auth/blob/main/brand/BRAND.md">Brand</a></li>
       </ul>
     </div>
-    <p class="fine">Piggyback is a prototype. Keep another factor available for people who can't or won't use their feet.</p>
+    <p class="fine">Piggyback is a prototype, not a sole-ution for everything. Keep another factor available for people who can't or won't use their feet.</p>
   </div>
 </footer>
 

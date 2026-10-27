@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The new 2FA (Two-Feet Authentication).</b><br>
-  A second factor that scans your feet, checks for a toe wiggle,<br>
+  A second factor that scans your feet, checks for a toe curl,<br>
   and piggybacks on the login you already have.
 </p>
 
@@ -33,7 +33,7 @@
 ## How it works
 
 1. **Enroll once.** The top of each foot, held still for a couple of seconds. After each foot you see what was saved and can redo it.
-2. **Log in.** The server picks one foot at random. Show it; once it matches, keep your heel down and follow the prompts: toes up, down, up again. Not knowing which foot means nobody can prepare the right one, and a photo can't follow the prompts: however it's tilted, zoomed or lit, it changes as one flat picture, and a finger over the toes is caught crossing the floor around them.
+2. **Log in.** The server picks one foot at random. Show it; once it matches, keep your heel down and follow the prompts: curl your toes, relax them, curl again. Not knowing which foot means nobody can prepare the right one, and a photo can't follow the prompts: however it's tilted, zoomed or lit, it changes as one flat picture, and a finger over the toes is caught crossing the floor around them.
 3. **On a computer, it hands off to the phone.** A laptop webcam can't see feet, so the scanner shows a QR code; the phone scans, the computer finishes by itself. No app to install, and the user's next step (like the first login after enrolling) goes straight to the same phone.
 4. **The server decides.** The browser only sends frames. Matching and liveness run on the server, which hands your backend a signed, one-time result.
 
@@ -164,4 +164,4 @@ The browser suite enrolls and verifies through both integrations, hands off from
 
 ## Status
 
-**Prototype.** Matching thresholds are tuned on drawn sample feet, not real ones, and a recorded video of wiggling toes would pass the liveness check. Sessions live in memory unless you point `PIGGYBACK_REDIS_URL` at Redis to run several instances. The identity platform recipes follow each vendor's documented model but haven't been run against a live tenant. See [Before production](docs/INTEGRATION.md#before-production).
+**Prototype.** Matching is tuned on drawn sample feet and on a handful of real scans from two people (the scanner's `?debug` mode saves what it saw; `node scripts/eval-scans.mjs scan.json …` replays saved scans through the engine and scores every session against every other). A recorded video of wiggling toes would pass the liveness check. Sessions live in memory unless you point `PIGGYBACK_REDIS_URL` at Redis to run several instances. The identity platform recipes follow each vendor's documented model but haven't been run against a live tenant. See [Before production](docs/INTEGRATION.md#before-production).

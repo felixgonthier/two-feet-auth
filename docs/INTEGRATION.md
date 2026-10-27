@@ -17,7 +17,7 @@ Piggyback is a second factor. Your login flow checks the password (or SSO) as us
 ## What the user does
 
 - **Enroll** (once): the top of each foot. Each is saved after a couple of seconds held still, then shown back so the user can redo it before moving on. (Soles were dropped: a sole held up to a camera turns and tilts too much to match reliably.)
-- **Verify** (each login): one foot, picked at random by the server, must match; then the scanner prompts for toes up, down, then up again while the heel stays down. Unpredictable views stop someone preparing the right photo; the prompts stop photos however they're moved (see [Liveness](#liveness)). Register a client with `--verify-views 2` to ask for both.
+- **Verify** (each login): one foot, picked at random by the server, must match; then the scanner prompts for toes curled, relaxed, then curled again while the heel stays down. Unpredictable views stop someone preparing the right photo; the prompts stop photos however they're moved (see [Liveness](#liveness)). Register a client with `--verify-views 2` to ask for both.
 
 ## On a computer: continue on the phone
 
@@ -27,7 +27,7 @@ A laptop webcam can't see feet, so on a computer the scanner leads with **Use my
 2. The phone's camera opens the link in the browser, with no app to install. The page says which app and which computer it's for ("Sign in to Piggy Bank · Started on a Mac · Chrome") and claims the link only when the user taps **Scan my feet**. A link works once, and showing a new code signs out any phone that claimed the old one.
 3. The phone scans with its own token, which can send frames but can't finish the session. The computer follows along (the steps tick and the line around the lens fills) and, once every view has passed, finishes by itself: the redirect, `piggyback-complete` and the OpenID Connect return all happen on the computer, as usual.
 
-4. **The next step comes straight to the same phone.** For 10 minutes after a phone takes a step, the same user's next session for the same app (typically the first login right after enrolling) skips the QR code. The computer hands it to that phone, which shows "One more step · Now sign in to Piggy Bank" and waits for a tap on **Continue**. The computer offers **Show a code** in case the phone has gone. Nothing carries over to another user or another app.
+4. **The next step comes straight to the same phone.** For 30 minutes after a phone takes a step, while its page stays open, the same user's next session for the same app (typically the first login right after enrolling) skips the QR code. The computer hands it to that phone, which shows "One more step · Now sign in to Piggy Bank" and waits for a tap on **Continue**. The computer offers **Show a code** in case the phone has gone. Nothing carries over to another user or another app. Staying on that one page also spares the user the browser's camera question, which most phone browsers ask again on every new page until the site is allowed for good (the scanner explains how, before the camera starts).
 
 **Use this computer** stays available next to it. Phones and tablets skip the QR code and scan directly. Set `handoff="off"` on the element to turn it off, or `handoff="on"` to force it.
 
@@ -182,7 +182,7 @@ Phone page (no auth; the code in the link is the secret, and it works once):
 | GET | `/m/:code` | The phone page. Opening it doesn't use up the code, so link previews can't spend it. |
 | GET | `/v1/handoff/:code` | `{ app, purpose, device, expires_at }`, shown before the user agrees |
 | POST | `/v1/handoff/:code/claim` | → `{ session_token, pairing_token }` for the phone; 404 `handoff_invalid` if expired or already used |
-| GET | `/v1/pairing/next` | Bearer `pairing_token`. → `{ session_token, purpose, app, device }` when the user's next step was handed to this phone, else `{ waiting: true }`; 401 once the pairing has expired (10 minutes) |
+| GET | `/v1/pairing/next` | Bearer `pairing_token`. → `{ session_token, purpose, app, device }` when the user's next step was handed to this phone, else `{ waiting: true }`; 401 once the pairing has expired (30 minutes) |
 
 Front page: `/` (says what the service is). Discovery: `/.well-known/piggyback-configuration`, keys: `/.well-known/jwks.json`, hosted page: `/hosted#t=<session_token>`.
 
@@ -191,7 +191,7 @@ Front page: `/` (says what the service is). Discovery: `/.well-known/piggyback-c
 Every frame is cropped to the guide area and looked at three ways; the outline that sits on the sharpest colour edge wins:
 
 - **Skin colour against the floor:** skin-hued pixels that differ from the floor colours at the frame's edge.
-- **FootNet:** a tiny per-pixel model (10 inputs, 12 hidden units, 145 numbers, in `core/footnet.js`). It's trained on drawn feet over many floors, skin tones, lights and shadows; retrain with `npm run train:footnet`.
+- **FootNet:** a tiny per-pixel model (10 inputs, 12 hidden units, 145 numbers, in `core/footnet.js`). It's trained on drawn feet over many floors, skin tones, lights and shadows, plus real frames from saved scans, labelled by the outline the engine found; retrain with `node scripts/train-footnet.mjs scan.json tester-scans.jsonl …` (set `OUT=` to write the model elsewhere and judge it with `scripts/eval-scans.mjs` first).
 - **Learnt colours:** the foot's colours from the middle of the guide and the floor's from the edges, refined a few times. It's slower, so it only runs when the first two disagree.
 
 Then it has to look like a foot: mostly skin-coloured (checked as seen and after a simple white balance, so bluish or yellowish light doesn't count against real skin) and wider at the toes than at the heel, with toes: the front edge has to show at least two separate bumps, where a skin-coloured blob is one smooth curve. A bare ankle or leg joined at the heel is cut off where the outline narrows and widens again, since how much leg shows changes with distance and would shift every measurement. The scanner finds the foot anywhere from about a third of the guide's height to nearly all of it (otherwise it says "Move closer" or "Move back"), then cuts the frames it measures and sends from the full camera picture around the foot, so the foot runs about 72% of their height at any distance: enrollment and every login are measured at the same scale. The server accepts 45% to 96%. A frame too dark to find anything in says "Too dark". Nothing in the first 0.7 s after the camera starts counts, while its exposure settles.
@@ -200,11 +200,11 @@ Floor in shadow (a darker version of the floor's own colour) is offered as floor
 
 **Matching** compares the foot's outline, width profile, proportions, skin texture and tone with the enrolled ones. Shapes are compared relative to the foot's own width as well as its length, so a phone held at a slight angle (which makes the foot look shorter) still matches; overall proportions count less for the same reason. On drawn feet it holds up to a foot turned 50°, a phone tilted so the foot looks 15% shorter, warm or cool light, another floor, shadows and a different distance.
 
-**On the phone**, the scanner looks at a smaller copy of each frame (about a third of the pixels) to guide and to see the foot hold still, which keeps it quick on slower phones. At that size the toes blur together, so the live check asks for one toe bump instead of two; the full-size frames it sends are what the server decides on.
+**On the phone**, the scanner looks at a smaller copy of each frame (about a third of the pixels) to guide and to see the foot hold still, which keeps it quick on slower phones. At that size the toes blur together, so the live check asks for one toe bump instead of two, and the slow learnt-colour method only runs when the quick ones find nothing; the full-size frames it sends are what the server decides on. The looking itself happens in a Web Worker that loads the same engine from the service (`/core/*`), so the camera preview and the ring stay smooth while a frame is analysed, and a slow phone simply looks at fewer frames. Where a worker can't be used (a single-file bundle, say) the same code runs on the page; `analysis="inline"` on the element forces that. Logging in, the toe prompts start as soon as the still frames are sent rather than after the server has answered; the toe frames only go once it has confirmed the match.
 
 ## Liveness
 
-After a match, the scanner prompts: **lift your toes**, **put them down**, **lift them again**, moving to the next prompt once two frames in a row show the toes doing it. The server re-checks the same frames:
+After a match, the scanner prompts: **curl your toes**, **relax them**, **curl them again** (lifting them works too), moving to the next prompt once two frames in a row show the toes doing it. Each frame is cut around the foot where the scanner sees it at that moment, so the phone may drift after the match. The server re-checks the same frames:
 
 - Each frame is lined up with the matched frame using the heel, midfoot and ball: an affine warp (shift, turn, zoom, tilt) plus a brightness change, fitted by Gauss–Newton after a coarse search. Both are smoothed first so fine detail doesn't count as change.
 - What the warp can't explain is measured on the toes, on the heel-to-ball points it was fitted on, and on a ring of floor around the front of the foot. Toes *up* means the toes changed well beyond how well the rest fits (`LIVE` in `core/engine.js`); *down* means they look as they did when matched; anything in the ring makes the frame *blocked*.
@@ -213,6 +213,13 @@ After a match, the scanner prompts: **lift your toes**, **put them down**, **lif
 A photo of a foot, however it's waved, tilted, zoomed or lit, moves as one flat picture that the warp explains, so its toes never come up; a finger or hand reaching over the toes crosses the ring. On drawn feet, real toe lifts passed every run, including half-height lifts, a shaky hand, drifting exposure and motion blur; a photo of the foot moved, zoomed, tilted, under glare or with a finger over the toes passed none (`npm run test:e2e` covers the photo case end to end). Before this check, a photo held in a hand that drifted a little closer passed every time.
 
 What it doesn't stop: a video of the user doing the same thing, played back in step with the prompts, or a cut-out print bent at the toes over a real floor.
+
+## Tester mode
+
+Add `?tester` to the demo's sign-in page (`https://demo.example.com/?tester`), or `#…&tester=1` to the hosted page, and the scanner sends what it saw after each try to `POST /v1/session/tester`: its live verdicts and status over time, a frame a second, the frames it couldn't make sense of, and every upload with the server's answer. It works on the phone too (debug and tester mode follow the user from the computer to the phone) and says so on screen. The service keeps each scan gzipped and encrypted with the data key, tagged with the app, the purpose, the views' results and a hash of the user (never the user id), for 30 days, up to 400 MB in all. Nothing is trained or changed automatically.
+
+- Export: `GET /v1/admin/tester-scans` with `Authorization: Bearer $PIGGYBACK_ADMIN_KEY` (one JSON object per line; 404 unless that variable is set), or `piggyback export-tester-scans --out DIR` on the server. `piggyback delete-tester-scans` removes them all.
+- Turn it off with `PIGGYBACK_TESTER=off`. These are photos of people's feet: only invite testers who agree to it.
 
 **Testing with real feet:** open the hosted page with `?debug` (for example `https://feet.example.com/hosted?debug#t=…`); it's carried over to the phone. The lens then draws the outline the scanner sees in yellow and the toe tip as a pink dot, and after each try a **Save this scan for debugging** link downloads what the scanner saw (the frames it couldn't make sense of, every upload and the server's answers) as a JSON file. Nothing is sent anywhere; the file stays on the device until you share it.
 
@@ -230,7 +237,7 @@ Setting up the server itself (Docker or a plain Linux server, https, backups) is
 - **Run it behind HTTPS** (`PUBLIC_URL=https://…`); camera access requires it.
 - **Keys:** pass `PIGGYBACK_DATA_KEY` from your KMS or secret store, and back up `DATA_DIR/keys.json` (signing key). Rotating the signing key means publishing both keys in the JWKS for a while; not automated yet.
 - **More than one instance:** sessions, codes, phone links and OpenID Connect requests live in memory by default. Set `PIGGYBACK_REDIS_URL=redis://…` (or `rediss://` for TLS; Redis 6.2+) and every instance shares them, so a computer and its phone can land on different servers. The Redis client is built in. Registered apps and foot templates are files in `DATA_DIR`: put it on shared storage, or one volume per region. Templates are files; move them to a database for multiple instances.
-- **Accuracy is unproven on real feet.** Thresholds and FootNet were tuned on drawn sample feet; retraining FootNet on consented real photos is the biggest single improvement available. Collect consented real-world data and measure false-accept and false-reject rates before relying on it.
-- **Liveness stops photos, not videos.** A recording of the user lifting their toes, played back in time with the prompts, could pass. Next: prompts the server randomises per session (how many lifts, which toes).
+- **Accuracy is barely measured on real feet.** Thresholds were tuned on drawn sample feet and then checked on a few real scans from two people; FootNet is trained on drawn feet only, and retraining it on consented real photos is the biggest single improvement available. Save scans with the scanner's `?debug` mode (or collect them with tester mode) and replay them with `node scripts/eval-scans.mjs scan.json …`, which reports every session's score against every other, to measure false-accept and false-reject rates before relying on it. Known weak spot: a pale, brightly lit foot on a pale floor, where the lit side of the foot is the colour of the floor and part of it is left out of the outline.
+- **Liveness stops photos, not videos.** A recording of the user curling their toes, played back in time with the prompts, could pass. Next: prompts the server randomises per session (how many curls, which toes).
 - **Biometric law:** foot templates are biometric data. Get opt-in consent at enrollment, state retention, honour deletion (`DELETE /v1/users/:id`). In Canada that's PIPEDA, and Quebec's Law 25 requires notifying the CAI before deploying biometric verification; Illinois BIPA if you have US users.
 - **Always keep another factor available** (passkey, authenticator app) for people who can't or won't use their feet.

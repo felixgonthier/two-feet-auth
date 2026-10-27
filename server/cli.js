@@ -14,6 +14,8 @@
 //   --hint-issuer iss=jwks_uri   trust signed id_token_hint tokens from this issuer (repeatable)
 //   --username-prompt     ask for the account name when no hint is sent
 //   --no-enroll           refuse users who haven't enrolled instead of enrolling them on first use
+import fs from "node:fs";
+import path from "node:path";
 import { Store } from "./store.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -46,7 +48,16 @@ if (cmd === "add-client") {
   for (const c of store.clients()) console.log(`${c.client_id}  ${c.name}  ${c.redirect_uris.join(" ")}`);
 } else if (cmd === "delete-user") {
   console.log(store.deleteUser(opts.client[0], opts.user[0]) ? "deleted" : "not found");
+} else if (cmd === "export-tester-scans") {
+  // One JSON file per tester scan, decrypted, into --out (default ./tester-scans).
+  const out = opts.out?.[0] || "tester-scans";
+  fs.mkdirSync(out, { recursive: true });
+  let n = 0;
+  for (const { name, scan } of store.testerScans()) { fs.writeFileSync(path.join(out, name.replace(/\.bin$/, ".json")), JSON.stringify(scan)); n++; }
+  console.log(`${n} scans written to ${out}`);
+} else if (cmd === "delete-tester-scans") {
+  console.log(`${store.deleteTesterScans()} scans deleted`);
 } else {
-  console.log("Commands: add-client --name N [--redirect-uri U ...] [OIDC options] | list-clients | delete-user --client C --user U");
+  console.log("Commands: add-client --name N [--redirect-uri U ...] [OIDC options] | list-clients | delete-user --client C --user U | export-tester-scans [--out DIR] | delete-tester-scans");
   process.exitCode = 1;
 }

@@ -8,7 +8,9 @@ const slot = document.getElementById("slot");
 const code = location.pathname.split("/").pop();
 const params = new URLSearchParams(location.hash.slice(1));
 const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-const NEXT_WAIT = 3 * 60 * 1000;  // how long a finished phone listens for the user's next step
+// How long a finished phone listens for the user's next step. Staying on this page also means the browser doesn't ask
+// for the camera again; it checks often at first, then every few seconds.
+const NEXT_WAIT = 30 * 60 * 1000;
 const panel = html => { slot.innerHTML = `<div class="pb-panel">${html}</div>`; };
 const expired = message => panel(`<h1 class="pb-title">This code has expired</h1><p class="pb-text">${esc(message || "Show a new code on your computer and scan it again.")}</p>`);
 const ask = ({ eyebrow, title, chip, text, button }, onGo) => {
@@ -19,13 +21,15 @@ const ask = ({ eyebrow, title, chip, text, button }, onGo) => {
   document.getElementById("go").addEventListener("click", e => { e.target.disabled = true; onGo(); }, { once: true });
 };
 
-// Run the scanner for one session; when it's done, listen for the next step.
-function scan(sessionToken, pairingToken) {
+// Run the scanner for one session; when it's done, listen for the next step. `modes`: debug and tester mode as the
+// computer had them (they also come in the link, for older computers).
+function scan(sessionToken, pairingToken, modes = {}) {
   const el = document.createElement("piggyback-auth");
   el.setAttribute("server", location.origin);
   el.setAttribute("session-token", sessionToken);
   el.setAttribute("mode", "phone");
-  if (params.has("debug")) el.setAttribute("debug", "");
+  if (modes.debug || params.has("debug")) el.setAttribute("debug", "");
+  if (modes.tester || params.has("tester")) el.setAttribute("tester", "");
   if (params.get("source") === "sample") {
     el.setAttribute("source", "sample");
     el.setAttribute("sample-who", params.get("who") || "you");
@@ -34,9 +38,9 @@ function scan(sessionToken, pairingToken) {
   slot.replaceChildren(el);
 }
 async function waitForNext(pairingToken) {
-  const until = Date.now() + NEXT_WAIT;
-  while (Date.now() < until) {
-    await new Promise(r => setTimeout(r, 1500));
+  const start = Date.now();
+  while (Date.now() < start + NEXT_WAIT) {
+    await new Promise(r => setTimeout(r, Date.now() - start < 3 * 60 * 1000 ? 1500 : 5000));
     const r = await fetch("/v1/pairing/next", { headers: { authorization: `Bearer ${pairingToken}` } }).catch(() => null);
     if (r?.status === 401) return;
     const next = r?.ok ? await r.json() : null;
@@ -45,9 +49,9 @@ async function waitForNext(pairingToken) {
         eyebrow: "One more step",
         title: next.purpose === "verify" ? `Now sign in to ${next.app}` : `Enroll your feet for ${next.app}`,
         chip: `For the ${next.device}`,
-        text: next.purpose === "verify" ? "One quick scan, then lift your toes, put them down and lift them again." : "The top of each foot, one at a time.",
+        text: next.purpose === "verify" ? "One quick scan, then curl your toes, relax them and curl them again." : "The top of each foot, one at a time.",
         button: "Continue",
-      }, () => scan(next.session_token, pairingToken));
+      }, () => scan(next.session_token, pairingToken, next.modes));
     }
   }
 }
@@ -67,7 +71,7 @@ try {
     const c = await fetch(`/v1/handoff/${encodeURIComponent(code)}/claim`, { method: "POST" });
     const claimed = await c.json();
     if (!c.ok) return expired(claimed.message);
-    scan(claimed.session_token, claimed.pairing_token);
+    scan(claimed.session_token, claimed.pairing_token, claimed.modes);
   });
 } catch (e) {
   expired(e.message);

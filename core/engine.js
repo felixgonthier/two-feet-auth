@@ -11,6 +11,12 @@ export const MATCH = 0.8;       // a view passes at this score
 export const STEADY = 0.85;     // enrollment frames must agree this much
 export const GUIDE = 0.62;      // guide frame width / height
 export const HOG_LEN = (RW / 8) * (RH / 8) * 9;
+// How much of a foot is measured: this many ball widths back from the tip of the toes, which reaches the instep and
+// stops short of the ankle (a foot is about 2.6 ball widths long; the ankle starts at about 1.9). Everything behind
+// that is cut off, since what the outline shows there is whatever the trousers and the camera angle leave of the ankle
+// and leg, and it changes from one login to the next. Lengths below (toe zone, texture strip) are fractions of this.
+export const BALLS = 1.7;
+const TOE_ZONE = 1 - 0.78 / BALLS;   // the toes: the front 0.78 ball widths, as a fraction of the measured length
 
 // The top of each foot. Soles were dropped: holding a sole up to a camera turns and tilts it too much to match reliably.
 export const VIEWS = [
@@ -55,8 +61,10 @@ function toLab(data, n) {
   return { L, A, B };
 }
 function isSkin(L, A, B) {
-  const chroma = Math.hypot(A, B), hue = Math.atan2(B, A) * 57.29578;
-  return chroma >= Math.max(3, 0.08 * L) && hue >= 10 && hue <= 100;
+  // Hue 10°–100° means B > 0.176 A (tan 10°) and A > −0.176 B (tan 100° = −5.67). Plain sqrt and products: this runs
+  // for every pixel, and Math.hypot/atan2 are several times slower than the arithmetic they stand for.
+  const chroma = Math.sqrt(A * A + B * B);
+  return chroma >= Math.max(3, 0.08 * L) && B >= 0.17632698 * A && A >= -0.17632698 * B && (A > 0 || B > 0);
 }
 export function grayFromRGBA(data, w, h) {
   const out = new Uint8Array(w * h);
@@ -94,24 +102,58 @@ function majority(m, w, h) {
   }
   return out;
 }
+// Grow (or shrink) a mask by r steps of its 4-neighbourhood. Pixels outside the frame count as empty for dilate and
+// are ignored for erode, which is what inverting, dilating and inverting back gives; done directly, there is no
+// inverting and no spare copies, which matters on a phone where these run a dozen times per frame.
 function dilate(m, w, h, r) {
   let cur = m;
   for (let k = 0; k < r; k++) {
     const out = new Uint8Array(w * h);
     for (let y = 0, i = 0; y < h; y++) {
+      const up = y > 0, down = y < h - 1;
       for (let x = 0; x < w; x++, i++) {
-        out[i] = cur[i] || (x > 0 && cur[i - 1]) || (x < w - 1 && cur[i + 1]) || (y > 0 && cur[i - w]) || (y < h - 1 && cur[i + w]) ? 1 : 0;
+        out[i] = cur[i] | (x > 0 ? cur[i - 1] : 0) | (x < w - 1 ? cur[i + 1] : 0) | (up ? cur[i - w] : 0) | (down ? cur[i + w] : 0);
       }
     }
     cur = out;
   }
   return cur;
 }
-const invert = m => m.map(v => 1 - v);
-const erode = (m, w, h, r) => invert(dilate(invert(m), w, h, r));
-const and = (a, b) => a.map((v, i) => v & b[i]);
-const count = m => m.reduce((s, v) => s + v, 0);
+function erode(m, w, h, r) {
+  let cur = m;
+  for (let k = 0; k < r; k++) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0, i = 0; y < h; y++) {
+      const up = y > 0, down = y < h - 1;
+      for (let x = 0; x < w; x++, i++) {
+        out[i] = cur[i] & (x > 0 ? cur[i - 1] : 1) & (x < w - 1 ? cur[i + 1] : 1) & (up ? cur[i - w] : 1) & (down ? cur[i + w] : 1);
+      }
+    }
+    cur = out;
+  }
+  return cur;
+}
+function and(a, b) {
+  const out = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i] & b[i];
+  return out;
+}
+function count(m) {
+  let s = 0;
+  for (let i = 0; i < m.length; i++) s += m[i];
+  return s;
+}
 
+// Does a shape run off the frame? Counted one pixel in from the border, since the smoothing passes never set the border
+// itself. The bottom edge is allowed more: toes go at the top, so that is where an ankle or leg runs out of the frame.
+// Something wide and flat along the bottom (trousers, a hand) still fails: it touches along most of its own length.
+function borderTouch(mask, w, h) {
+  const t = { bottom: 0, other: 0 };
+  for (let x = 1; x < w - 1; x++) { t.other += mask[w + x]; t.bottom += mask[(h - 2) * w + x]; }
+  for (let y = 2; y < h - 2; y++) t.other += mask[y * w + 1] + mask[y * w + w - 2];
+  return t;
+}
+const cropped = (touch, area) => touch.other > 0.35 * Math.sqrt(area) || touch.bottom > 0.75 * Math.sqrt(area);
 // Keep one connected shape: big, near the centre (or `at`), and not running off the edge.
 function pick(m, w, h, at) {
   const n = w * h, lab = new Int32Array(n), stack = new Int32Array(n);
@@ -120,13 +162,15 @@ function pick(m, w, h, at) {
   for (let s = 0; s < n; s++) {
     if (!m[s] || lab[s]) continue;
     id++;
-    let sp = 0, size = 0, sx = 0, sy = 0, touch = 0;
+    let sp = 0, size = 0, sx = 0, sy = 0;
+    const touch = { bottom: 0, other: 0 };
     stack[sp++] = s;
     lab[s] = id;
     while (sp) {
       const i = stack[--sp], x = i % w, y = (i / w) | 0;
       size++; sx += x; sy += y;
-      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touch++;
+      if (x <= 1 || y <= 1 || x >= w - 2) touch.other++;
+      else if (y >= h - 2) touch.bottom++;
       if (x > 0 && m[i - 1] && !lab[i - 1]) { lab[i - 1] = id; stack[sp++] = i - 1; }
       if (x < w - 1 && m[i + 1] && !lab[i + 1]) { lab[i + 1] = id; stack[sp++] = i + 1; }
       if (y > 0 && m[i - w] && !lab[i - w]) { lab[i - w] = id; stack[sp++] = i - w; }
@@ -135,7 +179,7 @@ function pick(m, w, h, at) {
     if (size < 30) continue;
     const d = Math.hypot(sx / size - cx0, sy / size - cy0) / diag;
     let score = size * Math.exp(-((d / 0.28) ** 2));
-    if (touch > 0.35 * Math.sqrt(size)) score *= 0.2;
+    if (cropped(touch, size)) score *= 0.2;
     if (score > bestScore) { bestScore = score; bestId = id; }
   }
   const out = new Uint8Array(n);
@@ -181,12 +225,26 @@ function patchGaps(arr) {
 
 // Background colours: up to three clusters from a ring just inside the frame, so a two-tone floor still counts as background.
 // The same frame asks for its floor colours several times; work them out once.
-let bgMemo = { L: null, centres: null };
+let bgMemo = { L: null, centres: null, dist: null };
 function backgroundColours(L, A, B, w, h) {
   if (bgMemo.L === L) return bgMemo.centres;
   const centres = floorColours(L, A, B, w, h);
-  bgMemo = { L, centres };
+  bgMemo = { L, centres, dist: null };
   return centres;
+}
+// How far each pixel is from the nearest floor colour (lightness counting half). Three of the ways of finding the
+// foot start from this same map, so it's worked out once per frame.
+function backgroundDistance(L, A, B, w, h) {
+  const centres = backgroundColours(L, A, B, w, h);
+  if (bgMemo.dist) return bgMemo.dist;
+  const n = w * h, dist = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let best = Infinity;
+    for (const c of centres) { const dl = (L[i] - c[0]) * 0.5, da = A[i] - c[1], db = B[i] - c[2]; best = Math.min(best, dl * dl + da * da + db * db); }
+    dist[i] = Math.sqrt(best);
+  }
+  bgMemo.dist = dist;
+  return dist;
 }
 function floorColours(L, A, B, w, h) {
   const ring = Math.max(2, Math.round(Math.min(w, h) * 0.04)), idx = [];
@@ -219,7 +277,10 @@ function floorColours(L, A, B, w, h) {
 // Up to three ways to find the foot; the outline on the strongest colour edge wins. With `prior` (the previous frame's
 // mask), outlines that agree with it get a boost, so one odd frame (a shadow, a hand) doesn't flip the result.
 const MODE = () => globalThis.__pbSegment || "all";  // tests compare the methods one at a time
-function segment(L, A, B, w, h, prior = null) {
+// `live`: the scanner's live look, where the slow learnt-colour method runs only when neither quick one finds a
+// plausible foot (a floor close to skin colour), not whenever the two disagree about the outline; the frames it sends
+// are measured in full. On a mid-range phone this is about a third of the live analysis.
+function segment(L, A, B, w, h, prior = null, live = false) {
   const shadow = floorShadows(L, A, B, w, h);
   const mode = MODE(), use = m => mode === "all" || mode.split(",").includes(m);
   // Shadow removal is its own candidate: very dark skin on a warm floor can look like that floor in shadow, so
@@ -231,17 +292,25 @@ function segment(L, A, B, w, h, prior = null) {
     shady && use("hue") ? segmentByHue(L, A, B, w, h, shady) : null,
     use("net") && FOOTNET ? segmentNet(L, A, B, w, h, shadow) : null,
   ].filter(Boolean);
-  const okQuick = quick.filter(s => plausible(s.mask, s.area, w, h));
+  const isOk = s => (s.ok ??= plausible(s.mask, s.area, w, h));
+  const okQuick = quick.filter(isOk);
   const agree = mode === "all" && okQuick.length >= 2 && iou(okQuick[0].mask, okQuick[okQuick.length - 1].mask) > 0.9;
-  const cands = agree ? quick : [
+  const cands = agree || (live && okQuick.length) ? quick : [
     ...quick,
     use("learnt") ? segmentLearnt(L, A, B, w, h) : null,
     shady && use("learnt") ? segmentLearnt(L, A, B, w, h, shady) : null,
   ].filter(Boolean);
-  const ok = cands.filter(s => plausible(s.mask, s.area, w, h));
+  const ok = cands.filter(isOk);
   if (!ok.length) return cands[0] || null;
-  const score = s => edgeContrast(L, A, B, s.mask, w, h) * (prior && prior.length === s.mask.length ? 0.75 + 0.5 * iou(s.mask, prior) : 1);
-  return ok.reduce((a, b) => (score(b) > score(a) ? b : a));
+  // Colour contrast across the outline, for an outline shaped like a foot: solid (no bites or holes where pale skin was
+  // taken for floor) and smooth. On a floor close to skin colour, a broken outline can sit on stronger colour edges
+  // (pink skin against yellowish skin) than the real edge of the foot does.
+  const score = s => (s.score ??= edgeContrast(L, A, B, s.mask, w, h) * shapeFactor(s.mask, s.area, w, h) * (prior && prior.length === s.mask.length ? 0.75 + 0.5 * iou(s.mask, prior) : 1));
+  const best = ok.reduce((a, b) => (score(b) > score(a) ? b : a));
+  // One more pass of the learnt two-colour model, this time seeded from the winning outline rather than the middle of
+  // the frame: it can take in parts of the foot the outline missed (a paler or pinker side), if that makes a better foot.
+  const again = segmentLearnt(L, A, B, w, h, shady, best.mask);
+  return again && isOk(again) && score(again) > score(best) ? again : best;
 }
 const iou = (a, b) => { let i = 0, u = 0; for (let k = 0; k < a.length; k++) { i += a[k] & b[k]; u += a[k] | b[k]; } return u ? i / u : 0; };
 
@@ -253,8 +322,8 @@ function floorShadows(L, A, B, w, h) {
     for (const c of centres) {
       const r = L[i] / Math.max(1, c[0]);
       if (r < 0.25 || r > 0.97) continue;
-      const tol = 3 + 0.12 * Math.hypot(c[1], c[2]);
-      if (Math.hypot(A[i] - c[1] * r, B[i] - c[2] * r) < tol) { out[i] = 1; break; }
+      const tol = 3 + 0.12 * Math.sqrt(c[1] * c[1] + c[2] * c[2]), da = A[i] - c[1] * r, db = B[i] - c[2] * r;
+      if (da * da + db * db < tol * tol) { out[i] = 1; break; }
     }
   }
   return out;
@@ -263,22 +332,17 @@ function floorShadows(L, A, B, w, h) {
 // FootNet: a tiny per-pixel model (10 inputs, one hidden layer of 12) trained on drawn feet with varied skin, floors,
 // light and shadows (scripts/train-footnet.mjs). Its outline is just one more candidate for segment() to weigh.
 function footFeatures(L, A, B, w, h, shadow) {
-  const n = w * h, F = 10, X = new Float32Array(n * F), centres = backgroundColours(L, A, B, w, h);
-  const dist = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let best = Infinity;
-    for (const c of centres) { const dl = (L[i] - c[0]) * 0.5, da = A[i] - c[1], db = B[i] - c[2]; best = Math.min(best, dl * dl + da * da + db * db); }
-    dist[i] = Math.sqrt(best);
-  }
+  const n = w * h, F = 10, X = new Float32Array(n * F), dist = backgroundDistance(L, A, B, w, h);
   // Floor distance averaged over a 7×7 neighbourhood (two box passes), so lone pixels count less.
   const tmp = new Float32Array(n), near = new Float32Array(n), R = 3;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0, c = 0; for (let k = -R; k <= R; k++) { const xx = x + k; if (xx >= 0 && xx < w) { s += dist[y * w + xx]; c++; } } tmp[y * w + x] = s / c; }
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0, c = 0; for (let k = -R; k <= R; k++) { const yy = y + k; if (yy >= 0 && yy < h) { s += tmp[yy * w + x]; c++; } } near[y * w + x] = s / c; }
   for (let y = 0, i = 0; y < h; y++) {
     for (let x = 0; x < w; x++, i++) {
-      const ch = Math.hypot(A[i], B[i]), hue = Math.atan2(B[i], A[i]), o = i * F;
+      // cos and sin of the hue are just A and B over the chroma.
+      const ch = Math.sqrt(A[i] * A[i] + B[i] * B[i]), o = i * F;
       X[o] = L[i] / 100; X[o + 1] = A[i] / 40; X[o + 2] = B[i] / 40; X[o + 3] = ch / 40;
-      X[o + 4] = ch > 2 ? Math.cos(hue) : 0; X[o + 5] = ch > 2 ? Math.sin(hue) : 0;
+      X[o + 4] = ch > 2 ? A[i] / ch : 0; X[o + 5] = ch > 2 ? B[i] / ch : 0;
       X[o + 6] = Math.min(2, dist[i] / 30); X[o + 7] = Math.min(2, near[i] / 30); X[o + 8] = shadow[i];
       X[o + 9] = Math.hypot((x / w - 0.5) * 1.6, y / h - 0.5) * 2;
     }
@@ -310,14 +374,60 @@ function segmentNet(L, A, B, w, h, shadow) {
 }
 // For scripts/train-footnet.mjs: the same colour conversion and features the engine uses.
 export const _training = { toLab, footFeatures, floorShadows };
+// For scripts/eval-scans.mjs: every candidate outline for a frame, with the numbers the picker weighs.
+export function _candidates(data, w, h) {
+  const n = w * h, { L, A, B } = toLab(data, n), shadow = floorShadows(L, A, B, w, h);
+  const shady = count(shadow) > 0.02 * n ? shadow : null;
+  const list = [
+    ["hue", segmentByHue(L, A, B, w, h)], ["hue+sh", shady && segmentByHue(L, A, B, w, h, shady)],
+    ["net", FOOTNET && segmentNet(L, A, B, w, h, shadow)],
+    ["learnt", segmentLearnt(L, A, B, w, h)], ["learnt+sh", shady && segmentLearnt(L, A, B, w, h, shady)],
+  ];
+  return list.map(([name, s]) => s && { name, mask: s.mask, area: s.area, ok: plausible(s.mask, s.area, w, h), contrast: edgeContrast(L, A, B, s.mask, w, h), ...shapeStats(s.mask, s.area, w, h), edges: borderTouch(s.mask, w, h), score: edgeContrast(L, A, B, s.mask, w, h) * shapeFactor(s.mask, s.area, w, h) }).filter(Boolean);
+}
+// Solidity squared over the square root of compactness: 1 for a filled disc, lower for a shape with bites, holes or a
+// ragged edge. A whole foot with its leg stub scores about 0.6–0.75; the same foot with its big toe or its outer side
+// missing, about 0.3–0.5.
+function shapeFactor(mask, area, w, h) {
+  const { solidity, compact } = shapeStats(mask, area, w, h);
+  return solidity * solidity / Math.sqrt(Math.max(1, compact));
+}
+// Solidity (area over convex hull area), compactness (perimeter² / 4π area) and how much of the inner frame border the mask touches.
+function shapeStats(mask, area, w, h) {
+  const pts = [];
+  let perim = 0;
+  for (let y = 0; y < h; y++) {
+    let lo = -1, hi = -1;
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!mask[i]) continue;
+      if (lo < 0) lo = x;
+      hi = x;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || !mask[i - 1] || !mask[i + 1] || !mask[i - w] || !mask[i + w]) perim++;
+    }
+    if (lo >= 0) { pts.push([lo, y]); if (hi !== lo) pts.push([hi + 1, y]); }
+  }
+  const hull = convexHull(pts);
+  let hullArea = 0;
+  for (let i = 0; i < hull.length; i++) { const p = hull[i], q = hull[(i + 1) % hull.length]; hullArea += p[0] * q[1] - q[0] * p[1]; }
+  hullArea = Math.abs(hullArea) / 2;
+  return { solidity: hullArea ? area / hullArea : 0, compact: perim * perim / (4 * Math.PI * area) };
+}
+function convexHull(pts) {
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
 // A blob that could be one foot: a sensible size, mostly clear of the frame edge, longer than it is wide.
 function plausible(mask, area, w, h) {
   const n = w * h;
   if (area < 0.04 * n || area > 0.85 * n) return false;
-  let touch = 0, sx = 0, sy = 0;
-  for (let x = 0; x < w; x++) touch += mask[x] + mask[(h - 1) * w + x];
-  for (let y = 1; y < h - 1; y++) touch += mask[y * w] + mask[y * w + w - 1];
-  if (touch > 0.35 * Math.sqrt(area)) return false;
+  if (cropped(borderTouch(mask, w, h), area)) return false;
+  let sx = 0, sy = 0;
   for (let i = 0; i < n; i++) if (mask[i]) { sx += i % w; sy += (i / w) | 0; }
   const cx = sx / area, cy = sy / area;
   let sxx = 0, syy = 0, sxy = 0;
@@ -329,12 +439,13 @@ function plausible(mask, area, w, h) {
 // How sharply colour changes across the outline: a mask that follows the real foot edge scores high.
 function edgeContrast(L, A, B, mask, w, h) {
   let sum = 0, cnt = 0;
-  const diff = (i, j) => Math.hypot((L[i] - L[j]) * 0.5, A[i] - A[j], B[i] - B[j]);
+  const diff = (i, j) => { const dl = (L[i] - L[j]) * 0.5, da = A[i] - A[j], db = B[i] - B[j]; return Math.sqrt(dl * dl + da * da + db * db); };
+  const steps = [[1, 2], [-1, -2], [w, 2 * w], [-w, -2 * w]];
   for (let y = 2; y < h - 2; y++) {
     for (let x = 2; x < w - 2; x++) {
       const i = y * w + x;
       if (!mask[i]) continue;
-      for (const [s1, s2] of [[1, 2], [-1, -2], [w, 2 * w], [-w, -2 * w]]) {
+      for (const [s1, s2] of steps) {
         // Inside pixel one step in from the edge, outside pixel one step beyond it, to skip the blurred edge itself.
         if (!mask[i + s1] && mask[i - s1]) { sum += diff(i - s1, i + s2); cnt++; }
       }
@@ -346,7 +457,7 @@ function edgeContrast(L, A, B, mask, w, h) {
 // Learnt two-colour model: the foot's colours from the middle of the guide, where the foot has to be, the floor's from
 // the frame edge. Each pixel goes to whichever it is closer to, then both models are refitted from the result, a few
 // times over (a light GrabCut). Works when the floor is close to skin colour, where a fixed skin-hue test can't.
-function segmentLearnt(L, A, B, w, h, shadow = null) {
+function segmentLearnt(L, A, B, w, h, shadow = null, seed = null) {
   const n = w * h, MINV = 6, X0 = new Float32Array(n);
   for (let i = 0; i < n; i++) X0[i] = L[i] * 0.5;  // lightness counts half, so shadows and shading matter less
   // A colour model is a mean and a variance per channel; cost() is its negative log-likelihood (up to a constant).
@@ -383,9 +494,10 @@ function segmentLearnt(L, A, B, w, h, shadow = null) {
   for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) if (!(x < ring || y < ring || x >= w - ring || y >= h - ring)) label[i] = 255;
   floor = floor.map((g, k) => refit(label, k, g));
   scoreFloor();
-  // Foot: the middle strip of the guide, minus anything that already looks like floor.
+  // Foot: the middle strip of the guide (or the inside of the seed outline), minus anything that already looks like floor.
+  const inner = seed ? erode(seed, w, h, 2) : null;
   for (let y = 0, i = 0; y < h; y++) {
-    for (let x = 0; x < w; x++, i++) label[i] = x > w * 0.42 && x < w * 0.58 && y > h * 0.28 && y < h * 0.78 && floorCost[i] > 16 ? 3 : 255;
+    for (let x = 0; x < w; x++, i++) label[i] = (inner ? inner[i] : x > w * 0.42 && x < w * 0.58 && y > h * 0.28 && y < h * 0.78) && floorCost[i] > 16 ? 3 : 255;
   }
   let foot = refit(label, 3, null);
   if (!foot) return null;
@@ -412,15 +524,11 @@ function segmentLearnt(L, A, B, w, h, shadow = null) {
 
 // Foot mask: skin-hued pixels that differ from the background, the most central blob, then trimmed to the foot's own skin colour.
 function segmentByHue(L, A, B, w, h, shadow = null) {
-  const n = w * h, centres = backgroundColours(L, A, B, w, h);
-  const D = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let best = Infinity;
-    for (const c of centres) {
-      const dl = (L[i] - c[0]) * 0.5, da = A[i] - c[1], db = B[i] - c[2];
-      best = Math.min(best, dl * dl + da * da + db * db);
-    }
-    D[i] = shadow?.[i] ? 0 : Math.sqrt(best);
+  const n = w * h, dist = backgroundDistance(L, A, B, w, h);
+  let D = dist;
+  if (shadow) {
+    D = new Float32Array(n);
+    for (let i = 0; i < n; i++) D[i] = shadow[i] ? 0 : dist[i];
   }
   const thr = Math.max(10, otsu(D, n));
   const fg = new Uint8Array(n), skin = new Uint8Array(n);
@@ -532,9 +640,10 @@ const round = (arr, d = 4) => arr.map(v => Math.round(v * 10 ** d) / 10 ** d);
 const fail = (code, message) => ({ ok: false, code, message });
 
 // ---------- Analysis: an RGBA frame of the guide area (≤ PROC px) in, foot measurements out ----------
-// How much of the frame's height the foot should run (heel to toes). The scanner sends frames cut around the foot,
-// where it runs about 72%; this band is what the server accepts.
-export const FIT = { min: 0.45, max: 0.96 };
+// How much of the frame's height the measured part of the foot (toes to instep, BALLS ball widths) should run. The
+// scanner sends frames cut around that part, where it runs about 72%; this band is what the server accepts (the floor
+// is low enough for frames the scanner cut around the whole foot and leg, as it did before the cut existed).
+export const FIT = { min: 0.38, max: 0.96 };
 // Centre, heel-to-toe axis (toes first) and slices of a foot mask.
 function orient(mask, area, w, h) {
   let sx = 0, sy = 0;
@@ -568,44 +677,51 @@ function ankleCut(width) {
   const beyond = Math.max(...width.slice(0, neck));
   return neck > 2 && beyond > 1.3 * width[neck] && width[neck] < 0.8 * Math.max(...width) ? neck : 0;
 }
-// Toes: seen from above, the toe end's edge is a row of bumps, one per toe, where a blob is one smooth curve.
-// Counts the bumps along the front edge, across the foot's width.
-function toeBumps(mask, w, h, cx, cy, ex, ey, P) {
-  const N = 24, front = new Float64Array(N).fill(-Infinity), len = P.len;
-  const span = Math.max(...P.hi) - Math.min(...P.lo) || 1, v0 = Math.min(...P.lo);
-  for (let y = 0, i = 0; y < h; y++) {
-    for (let x = 0; x < w; x++, i++) {
-      if (!mask[i]) continue;
-      const dx = x - cx, dy = y - cy, u = (dx * ex + dy * ey - P.umin) / len;
-      if (u < 0.7) continue;
-      const k = Math.min(N - 1, Math.max(0, Math.floor(((-dx * ey + dy * ex) / len - v0) / span * N)));
-      if (u > front[k]) front[k] = u;
+// Toes: seen from above, the front of the foot is a row of toes with a gap between each pair. Across the toe zone,
+// the gaps are dark lines (the shadow where two toes meet), whatever the floor, and a few pixels wide at most: too
+// fine for the smoothed outline to keep, so they are read from the lightness itself, in a finely sampled strip 1.2
+// ball widths across. A notch in the outline counts too, for toes held apart. Returns the number of gaps.
+function toeGaps(L, mask, w, h, cx, cy, ex, ey, P, ball) {
+  const C = 64, R = 32, len = P.len, bw = ball * len, light = new Float64Array(C), inside = new Float64Array(C);
+  for (let j = 0; j < R; j++) {
+    const u = P.umax - ((j + 0.5) / R) * 0.8 * bw;
+    for (let i = 0; i < C; i++) {
+      const v = (-0.6 + ((i + 0.5) / C) * 1.2) * bw, x = cx + u * ex - v * ey, y = cy + u * ey + v * ex;
+      const xi = Math.round(x), yi = Math.round(y);
+      if (!(xi >= 0 && yi >= 0 && xi < w && yi < h && mask[yi * w + xi])) continue;
+      inside[i]++;
+      light[i] += bilinear(L, w, h, x, y);
     }
   }
-  const f = Array.from(front, v => (v === -Infinity ? NaN : v));
-  let bumps = 0;
-  for (let k = 1; k < N - 1; k++) {
-    if (Number.isNaN(f[k])) continue;
-    // A bump: higher than its neighbours on both sides, standing out from the lower of the two dips around it.
-    let l = k - 1, r = k + 1;
-    while (l > 0 && !(f[l] < f[k])) l--;
-    while (r < N - 1 && !(f[r] < f[k])) r++;
-    if (!(f[k] >= f[k - 1] && f[k] > f[k + 1])) continue;
-    let dipL = f[k], dipR = f[k];
-    for (let q = k - 1; q >= 0 && !(f[q] > f[k]); q--) if (f[q] < dipL) dipL = f[q];
-    for (let q = k + 1; q < N && !(f[q] > f[k]); q++) if (f[q] < dipR) dipR = f[q];
-    if (f[k] - Math.max(dipL, dipR) > 0.003) bumps++;
-  }
-  return bumps;
+  // Mean lightness per column, where enough of the column is foot; NaN elsewhere.
+  const prof = Array.from(light, (s, i) => (inside[i] >= R / 4 ? s / inside[i] : NaN));
+  const dips = (f, min) => {
+    const at = [];
+    for (let i = 1; i < C - 1; i++) {
+      if (Number.isNaN(f[i]) || !(f[i] <= f[i - 1] && f[i] < f[i + 1])) continue;
+      let pl = f[i], pr = f[i];
+      for (let q = i - 1; q >= 0 && !Number.isNaN(f[q]) && !(f[q] < f[i]); q--) pl = Math.max(pl, f[q]);
+      for (let q = i + 1; q < C && !Number.isNaN(f[q]) && !(f[q] < f[i]); q++) pr = Math.max(pr, f[q]);
+      if (Math.min(pl, pr) - f[i] >= min) at.push(i);
+    }
+    return at;
+  };
+  const cols = [...dips(prof, 3), ...dips(Array.from(inside, (v, i) => (Number.isNaN(prof[i]) ? NaN : v)), 2)].sort((a, b) => a - b);
+  let gaps = 0, last = -9;
+  for (const c of cols) { if (c - last > 2) gaps++; last = c; }
+  return gaps;
 }
 // `prior`: the previous frame's mask (geo.mask), to keep the outline steady from frame to frame.
-// `minToes`: toe bumps the front edge must show. The server asks for 2 on full-size frames; the phone's small live
-// copy, where toes blur together, asks for 1 just to guide.
-export function analyzePixels(data, w, h, { prior = null, minToes = 2, fit = FIT } = {}) {
+// `minToes`: gaps between toes the toe zone must show. The server asks for 2 on full-size frames; the phone's small
+// live copy, where toes blur together, asks for 1 just to guide.
+// `trace` is what the last call measured on its way to a verdict (for scripts/eval-scans.mjs), nothing more.
+export const trace = {};
+export function analyzePixels(data, w, h, { prior = null, minToes = 2, fit = FIT, quick = false } = {}) {
   const n = w * h;
+  for (const k in trace) delete trace[k];
   if (!(w >= 16 && h >= 16 && w <= PROC && h <= PROC) || data.length !== n * 4) return fail("bad_frame", "The frame has the wrong size.");
   const { L, A, B } = toLab(data, n);
-  const seg = segment(L, A, B, w, h, prior);
+  const seg = segment(L, A, B, w, h, prior, quick);
   if (!seg || seg.area < 0.04 * n) {
     // Nothing found in a very dark frame: say so, rather than "looking".
     let sum = 0;
@@ -628,12 +744,23 @@ export function analyzePixels(data, w, h, { prior = null, minToes = 2, fit = FIT
     if (area < 0.04 * n) return fail("none", "Looking for a bare foot inside the frame…");
     ({ cx, cy, ex, ey, P } = orient(mask, area, w, h));
   }
-  let touch = 0;
-  for (let x = 0; x < w; x++) touch += mask[x] + mask[(h - 1) * w + x];
-  for (let y = 1; y < h - 1; y++) touch += mask[y * w] + mask[y * w + w - 1];
-  if (touch > 0.35 * Math.sqrt(area)) return fail("cropped", "Something skin-coloured runs off the frame. Fit heel to toes inside it, and cover your leg.");
-  // Distance: the foot should run most of the way up the frame, the same at enrollment and at every login, so its
-  // details are seen at the same size (like Face ID's "move closer").
+  if (cropped(borderTouch(mask, w, h), area)) return fail("cropped", "Something skin-coloured runs off the frame. Fit heel to toes inside it, and cover your leg.");
+  // Measure a fixed length of foot from the toes, and nothing of the ankle or leg behind it.
+  for (let pass = 0; pass < 2; pass++) {
+    let ball = 0;
+    for (let b = Math.round(BINS * 0.4); b < BINS; b++) ball = Math.max(ball, P.hi[b] - P.lo[b]);
+    const at = P.umax - BALLS * ball * P.len;
+    if (!(at > P.umin + 2)) break;
+    mask = mask.slice();
+    for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) if (mask[i] && (x - cx) * ex + (y - cy) * ey < at) mask[i] = 0;
+    mask = fillHoles(pick(mask, w, h), w, h);
+    area = count(mask);
+    if (area < 0.04 * n) return fail("none", "Looking for a bare foot inside the frame…");
+    ({ cx, cy, ex, ey, P } = orient(mask, area, w, h));
+  }
+  // Distance: the measured part of the foot should run most of the way up the frame, the same at enrollment and at
+  // every login, so its details are seen at the same size (like Face ID's "move closer"). Judged after the cut, so a
+  // bare leg running to the edge of the frame doesn't make a far foot look close.
   const fill = P.len / h;
   if (fill < fit.min) return fail("far", "Move the phone closer: the foot looks too small.");
   if (fill > fit.max) return fail("close", "Move the phone back a little so the whole foot fits.");
@@ -649,24 +776,29 @@ export function analyzePixels(data, w, h, { prior = null, minToes = 2, fit = FIT
     if (isSkin(L[i], A[i] - ma, B[i] - mb)) wbPx++;
   }
   skinPx = Math.max(skinPx, wbPx);
-  const toeW = Math.max(...P.width.slice(Math.round(BINS * 0.55))), heelW = Math.max(...P.width.slice(0, Math.round(BINS * 0.3)));
-  if (skinPx < 0.45 * area) return fail("not_skin", "That doesn't look like a foot yet. Show one bare foot from above, toes at the top.");
-  if (toeW < 1.08 * heelW) return fail("not_foot", "That doesn't look like a foot yet. Show one bare foot from above, toes at the top.");
-  if (toeBumps(mask, w, h, cx, cy, ex, ey, P) < minToes) return fail("no_toes", "Can't make out the toes. Show the whole foot from above, toes spread a little, at the top.");
+  // The ball of the foot, in the front half, is the widest part. Seen from a low angle the instep behind it looks as
+  // wide, or a little wider, so only something clearly wider at the back (a leg, a hand with the wrist in) is refused
+  // here; the toe gaps and the match itself are the real tests. Tighter than 0.7 and real feet flicker in and out.
+  const toeW = Math.max(...P.width.slice(Math.round(BINS * 0.5))), heelW = Math.max(...P.width.slice(0, Math.round(BINS * 0.3)));
   let maxW = 0;
   for (let b = 0; b < BINS; b++) maxW = Math.max(maxW, P.hi[b] - P.lo[b]);
-  const aspect = 1 / (maxW || 1);
-  const fillRatio = area / (P.len * P.len * (maxW || 1));
-  if (aspect < 1.6 || aspect > 4.6 || fillRatio < 0.45 || fillRatio > 0.92) {
+  const gaps = toeGaps(L, mask, w, h, cx, cy, ex, ey, P, maxW), aspect = 1 / (maxW || 1), fillRatio = area / (P.len * P.len * (maxW || 1));
+  Object.assign(trace, { fill, cut, skin: skinPx / area, toeW, heelW, gaps, aspect, fillRatio, width: P.width, geo: { w, h, mask, cx, cy, ex, ey, umin: P.umin, umax: P.umax } });
+  // Mostly skin: a sock, a shoe or the floor itself fails this. Very pale skin in flat light has little colour and
+  // sits near the edge of the skin test, so the bar is low; the toe gaps and the match itself are the real tests.
+  if (skinPx < 0.3 * area) return fail("not_skin", "That doesn't look like a foot yet. Show one bare foot from above, toes at the top.");
+  if (toeW < 0.7 * heelW) return fail("not_foot", "That doesn't look like a foot yet. Show one bare foot from above, toes at the top.");
+  if (gaps < minToes) return fail("no_toes", "Can't make out the toes. Show the whole foot from above, toes spread a little, at the top.");
+  if (aspect < 1.3 || aspect > 2.6 || fillRatio < 0.5 || fillRatio > 0.95) {
     return fail("shape", "That shape doesn't look like a foot. Fit one bare foot inside the frame, heel to toes.");
   }
 
-  // Straighten the foot into a 32×64 strip (toes at the top) for the texture check.
-  const rect = new Float32Array(RW * RH), rmask = new Uint8Array(RW * RH);
+  // Straighten the foot into a 32×64 strip (toes at the top), 1.2 ball widths across, for the texture check.
+  const rect = new Float32Array(RW * RH), rmask = new Uint8Array(RW * RH), half = 0.6 / BALLS;
   for (let j = 0; j < RH; j++) {
     const u = P.umax - ((j + 0.5) / RH) * P.len;
     for (let i = 0; i < RW; i++) {
-      const v = (-0.25 + ((i + 0.5) / RW) * 0.5) * P.len;
+      const v = (-half + ((i + 0.5) / RW) * 2 * half) * P.len;
       const x = cx + u * ex - v * ey, y = cy + u * ey + v * ex;
       const kk = j * RW + i;
       rect[kk] = bilinear(L, w, h, x, y);
@@ -706,11 +838,14 @@ export const validFeature = f =>
   Array.isArray(f.tone) && f.tone.length === 3 && typeof f.aspect === "number";
 
 // ---------- Matching ----------
-// Tuned on drawn sample feet with background clutter: same foot 0.85+, the other foot 0.66 or less, another person 0.63 or less.
+// Tuned on drawn sample feet with background clutter, then on real scans of two people (scripts/eval-scans.mjs): the
+// same foot at a later login 0.93 or more, the other foot 0.6 or less, another person 0.6 or less. Texture (toenails,
+// creases, hair) tells people apart best; the outline tells left from right; the width profile is much the same for
+// any foot and counts least. Proportions dropped out: the measured length is a fixed number of ball widths now.
 const TAU = { shape: 0.18, outline: 0.06, prop: 0.22, hog0: 0.5, tone: 14 };
-const WEIGHT = { shape: 0.28, outline: 0.37, proportions: 0.08, texture: 0.17, tone: 0.1 };
+const WEIGHT = { shape: 0.2, outline: 0.35, proportions: 0, texture: 0.3, tone: 0.15 };
 // Shapes are compared relative to the foot's own width as well as its length, so a phone held at a slight angle
-// (which makes the foot look shorter, not narrower) changes little; overall proportions, which do change, count less.
+// (which makes the foot look shorter, not narrower) changes little.
 // `tau` and `weight` are overridable for tuning experiments; the defaults are what logins use.
 export function compare(a, b, tau = TAU, weight = WEIGHT) {
   const wa = Math.max(...a.prof) || 1, wb = Math.max(...b.prof) || 1;
@@ -745,14 +880,16 @@ export function meanFeatures(list) {
 }
 export const bestOf = (templates, f) => (templates || []).reduce((m, t) => Math.max(m, compare(t, f).score), 0);
 
-// ---------- Liveness: the toes lift and drop on cue while everything around them stays put ----------
+// ---------- Liveness: the toes curl (or lift) and relax on cue while everything around them stays put ----------
 // A photo of a foot moves as one flat picture: tilted, zoomed, shifted or caught in glare, one warp plus a brightness
 // change explains all of it. Live toes don't follow that warp. So each frame is warped onto the matched frame using the
 // heel, midfoot and ball, and what's left over is measured in three places:
 //   rest   the heel-to-ball points the warp was fitted on (how well it fits: blur, noise)
 //   toes   the toes themselves
 //   guard  a ring of floor around the front of the foot: a finger or anything else reaching over the toes crosses it
-// Region bounds are fractions of the foot's length from the heel (s) and across its axis (v).
+// Region bounds are fractions of the measured length from its back end (s): the rest stops 0.9 ball widths short of
+// the toe tips, the toes start 0.67 ball widths from them.
+const REST_END = 1 - 0.9 / BALLS, TOES_START = 1 - 0.67 / BALLS;
 export function zones(geo) {
   const { w, h, mask, cx, cy, ex, ey, umin, umax } = geo, len = umax - umin;
   const near = dilate(mask, w, h, Math.max(3, Math.round(len * 0.03)));
@@ -763,9 +900,9 @@ export function zones(geo) {
   for (let y = 0, i = 0; y < h; y++) {
     for (let x = 0; x < w; x++, i++) {
       const dx = x - cx, dy = y - cy, s = (dx * ex + dy * ey - umin) / len;
-      if (near[i] && s <= 0.66) rest.push(x, y);
-      else if (pad[i] && s >= 0.74) toes.push(x, y);
-      else if (ringOut[i] && !ringIn[i] && s >= 0.66) guard.push(x, y);
+      if (near[i] && s <= REST_END) rest.push(x, y);
+      else if (pad[i] && s >= TOES_START) toes.push(x, y);
+      else if (ringOut[i] && !ringIn[i] && s >= REST_END) guard.push(x, y);
     }
   }
   return { rest, toes, guard };
@@ -926,8 +1063,8 @@ export function motionOf(G0, R0, w, h, zone, pivot) {
   };
 }
 // What one frame shows, against the matched (toes down) frame:
-//   up       the toes changed well beyond how well the rest fits, and nothing crossed the ring around them
-//   down     the toes look as they did when matched
+//   up       the toes changed well beyond how well the rest fits (curled, or lifted), and nothing crossed the ring around them
+//   down     the toes look as they did when matched (relaxed)
 //   blocked  something changed in the ring around the toes (a finger, a hand, the picture itself bending)
 //   between  anything else (half-lifted, blurred)
 export const LIVE = { excess: 5, ratio: 3, still: 2, guard: 2.5, guardRatio: 1.4, run: 2 };

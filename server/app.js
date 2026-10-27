@@ -23,7 +23,7 @@ const MAX_ATTEMPTS = 5;        // per view, then the whole session fails
 const MAX_BODY = 8 * 1024 * 1024;
 const MAX_FRAMES = 16;
 const HANDOFF_TTL = 2 * 60 * 1000;  // a phone link must be opened within this
-const PAIR_TTL = 10 * 60 * 1000;    // after a phone scans, it can take the user's next step without a new code
+const PAIR_TTL = 30 * 60 * 1000;    // after a phone scans, it can take the user's next step without a new code (or a new camera question)
 const HANDOFF_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";  // no 0/O or 1/I, in case someone types it
 
 const token = () => crypto.randomBytes(32).toString("base64url");
@@ -46,7 +46,8 @@ class HttpError extends Error {
   }
 }
 
-export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, redisUrl = null, state = createState(redisUrl), log = () => {} }) {
+// `tester`: accept tester-mode scans (POST /v1/session/tester). `adminKey`: lets GET /v1/admin/tester-scans export them.
+export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, tester = true, adminKey = null, redisUrl = null, state = createState(redisUrl), log = () => {} }) {
   const store = new Store(dataDir, { dataKey });
   // Short-lived state lives in `state` (memory, or Redis shared between instances). Keys:
   //   ses:<id> session · tok:<sha256(token)> session id · code:<sha256(code)> result to exchange
@@ -275,13 +276,15 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
       if (fromPhone(req, s)) throw new HttpError(403, "phone_session", "The phone can't hand off again.");
       const body = await readBody(req);
       const device = deviceOf(req.headers["user-agent"]);
+      // Debug and tester mode follow the user from the computer to the phone.
+      s.modes = { debug: !!body.debug, tester: !!body.tester };
       // The phone that did the previous step takes this one: no new code to scan (it still asks before scanning).
       const paired = !body.fresh && !s.handoff && (await pairingFor(s));
       if (paired) {
         const { hash, pairing } = paired;
         s.handoff = { codeHash: null, expires: s.expires, claimed: false, device };
         const secret = await attachPhone(s, pairing.device, { offered: true });
-        Object.assign(pairing, { session: s.id, next: { session_id: s.id, session_token: secret, purpose: s.purpose, app: store.client(s.client_id)?.name || "the app", device } });
+        Object.assign(pairing, { session: s.id, next: { session_id: s.id, session_token: secret, purpose: s.purpose, app: store.client(s.client_id)?.name || "the app", device, modes: s.modes } });
         await state.set(`pair:${hash}`, pairing, pairing.expires - Date.now());
         log(`session ${s.id} handed to the paired phone`);
         return send(res, 201, { url: null, attached: true, device: pairing.device, expires_at: new Date(s.expires).toISOString() });
@@ -301,7 +304,7 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
     if (hm && req.method === (hm[2] ? "POST" : "GET")) {
       const s = await openHandoff(hm[1]);
       const app = store.client(s.client_id)?.name || "the app";
-      if (!hm[2]) return send(res, 200, { app, purpose: s.purpose, device: s.handoff.device, views: s.required.map(k => viewByKey[k].title), expires_at: new Date(s.handoff.expires).toISOString() });
+      if (!hm[2]) return send(res, 200, { app, purpose: s.purpose, device: s.handoff.device, views: s.required.map(k => viewByKey[k].title), modes: s.modes || {}, expires_at: new Date(s.handoff.expires).toISOString() });
       // Single use: whoever takes the link first gets it.
       if (!(await state.take(`link:${s.handoff.codeHash}`))) throw new HttpError(404, "handoff_invalid", "This code has expired or was already used. Show a new one on your computer.");
       const phone = deviceOf(req.headers["user-agent"]);
@@ -311,7 +314,7 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
       await state.set(`pair:${pairHash}`, { client_id: s.client_id, user_id: s.user_id, device: phone, session: s.id, next: null, expires: Date.now() + PAIR_TTL }, PAIR_TTL);
       await state.set(`pairfor:${s.client_id}|${s.user_id}`, pairHash, PAIR_TTL);
       log(`session ${s.id} handoff claimed`);
-      return send(res, 200, { session_token: secret, pairing_token: pairToken, purpose: s.purpose, app });
+      return send(res, 200, { session_token: secret, pairing_token: pairToken, purpose: s.purpose, app, modes: s.modes || {} });
     }
     // The paired phone asks whether the user's next step is waiting for it.
     if (req.method === "GET" && p === "/v1/pairing/next") {
@@ -327,6 +330,42 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
       const s = await state.get(`ses:${session_id}`);
       if (s?.handoff) { s.handoff.claimed = true; await saveSession(s); }
       return send(res, 200, next);
+    }
+    // Tester mode: what the scanner saw during this sign-in (frames, its live verdicts, the server's answers), kept
+    // encrypted for a while to improve detection. Allowed until the session expires, failed or finished included,
+    // since the failures are what matter most.
+    if (p === "/v1/session/tester" && req.method === "POST") {
+      if (!tester) throw new HttpError(404, "not_found", "No such endpoint.");
+      const m = /^Bearer (.+)$/i.exec(req.headers.authorization || "");
+      const id = m && (await state.get(`tok:${sha256(m[1])}`));
+      const s = id && (await state.get(`ses:${id}`));
+      if (!s || s.expires < Date.now()) throw new HttpError(401, "invalid_session", "This session has expired.");
+      if ((s.testerScans = (s.testerScans || 0) + 1) > 40) throw new HttpError(429, "too_many", "This session has sent enough tester scans.");
+      await saveSession(s);
+      const body = await readBody(req);
+      if (!body?.scan || typeof body.scan !== "object" || Array.isArray(body.scan)) throw new HttpError(400, "invalid_request", "Send { scan: { … } }.");
+      const name = store.putTesterScan({
+        received_at: new Date().toISOString(),
+        client: store.client(s.client_id)?.name || null,
+        // The same person across scans, without their user id.
+        person: sha256(`${s.client_id}:${s.user_id}`).slice(0, 16),
+        purpose: s.purpose,
+        views: Object.fromEntries(Object.entries(s.views).map(([k, v]) => [k, { ok: !!v.ok, attempts: v.attempts || 0, score: v.score ?? v.matched?.score ?? null }])),
+        scan: body.scan,
+      });
+      if (!name) throw new HttpError(507, "storage_full", "Tester storage is full.");
+      log(`session ${s.id} tester scan ${name}`);
+      return send(res, 200, { ok: true });
+    }
+    // Export of the tester scans, one JSON object per line, for whoever holds PIGGYBACK_ADMIN_KEY.
+    if (p === "/v1/admin/tester-scans" && req.method === "GET") {
+      const m = /^Bearer (.+)$/i.exec(req.headers.authorization || "");
+      if (!adminKey) throw new HttpError(404, "not_found", "No such endpoint.");
+      const a = Buffer.from(sha256(m?.[1] || "")), b = Buffer.from(sha256(adminKey));
+      if (!crypto.timingSafeEqual(a, b)) throw new HttpError(401, "unauthorized", "Wrong admin key.");
+      res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" });
+      for (const x of store.testerScans()) res.write(JSON.stringify(x) + "\n");
+      return res.end();
     }
     const vm = /^\/v1\/session\/views\/([LR]\.top)$/.exec(p);
     if (vm && req.method === "POST") {
@@ -417,7 +456,7 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
     if (req.method === "GET" && p === "/hosted") {
       return send(res, 200, fs.readFileSync(path.join(ROOT, "server", "hosted.html")), {
         "content-type": "text/html; charset=utf-8",
-        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; frame-ancestors 'none'",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'",
         "permissions-policy": "camera=(self)",
         "referrer-policy": "no-referrer",
       });
@@ -425,7 +464,7 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, re
     if (req.method === "GET" && /^\/m\/[2-9A-HJ-NP-Z]{10}$/.test(p)) {
       return send(res, 200, fs.readFileSync(path.join(ROOT, "server", "handoff.html")), {
         "content-type": "text/html; charset=utf-8",
-        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; frame-ancestors 'none'",
+        "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'",
         "permissions-policy": "camera=(self)",
         "referrer-policy": "no-referrer",
       });

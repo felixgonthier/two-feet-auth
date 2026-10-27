@@ -6,8 +6,8 @@ import "./piggyback.js";
 // and kept for this tab only (sessionStorage) so a reload carries on instead of losing the sign-in.
 const KEPT = "piggyback.hosted";
 let params = new URLSearchParams(location.hash.slice(1));
-const debug = new URLSearchParams(location.search).has("debug");
-history.replaceState(null, "", location.pathname + (debug ? "?debug" : ""));
+const search = new URLSearchParams(location.search), debug = search.has("debug"), tester = search.has("tester");
+history.replaceState(null, "", location.pathname + (debug || tester ? `?${[debug && "debug", tester && "tester"].filter(Boolean).join("&")}` : ""));
 try {
   if (params.get("t")) sessionStorage.setItem(KEPT, params.toString());
   else params = new URLSearchParams(sessionStorage.getItem(KEPT) || "");
@@ -24,6 +24,8 @@ if (!token) {
   el.setAttribute("session-token", token);
   // ?debug on the hosted page draws the outline the scanner sees, for testing with real feet.
   if (debug || params.has("debug")) el.setAttribute("debug", "");
+  // Tester mode: what the camera sees during the scans is sent to the service to improve detection (it says so).
+  if (tester || params.has("tester")) el.setAttribute("tester", "");
   if (params.get("source") === "sample") {
     el.setAttribute("source", "sample");
     el.setAttribute("sample-who", params.get("who") || "you");

@@ -24,7 +24,7 @@
     "start": "node server/index.js",
     "add-client": "node server/cli.js add-client",
     "demo": "node examples/demo-app/server.js",
-    "test": "node --check sdk/piggyback.js && node --check sdk/hosted.js && node --check sdk/handoff.js && node --check sdk/local-backend.js && node --check sdk/sample-camera.js && node --test test/api.test.js test/oidc.test.js test/state.test.js",
+    "test": "node --check sdk/piggyback.js && node --check sdk/hosted.js && node --check sdk/handoff.js && node --check sdk/local-backend.js && node --check sdk/sample-camera.js && node --test test/api.test.js test/oidc.test.js test/state.test.js test/tester.test.js",
     "test:e2e": "node test/e2e.js",
     "build:demo": "node scripts/build-single-file.mjs",
     "train:footnet": "node scripts/train-footnet.mjs"

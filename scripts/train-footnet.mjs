@@ -1,7 +1,10 @@
 // Trains FootNet, the tiny per-pixel foot model in core/engine.js, and writes core/footnet.js.
-//   npm install && node scripts/train-footnet.mjs        (needs Chrome, like the browser tests)
+//   npm install && node scripts/train-footnet.mjs [scan.json | tester-scans.jsonl …]   (needs Chrome, like the browser tests)
 // Training data is drawn feet (sdk/sample-camera.js) over many floors, skin tones, lights and shadows; the true foot
-// outline comes from drawing the same pose again on a magenta floor. Real photos would train it better.
+// outline comes from drawing the same pose again on a magenta floor. Saved real scans (the scanner's ?debug files, or a
+// tester-mode export) add real feet: every frame the engine accepts, labelled by the outline it found, keeping a margin
+// on both sides of the edge and nothing behind the cut (ankle, leg) where that outline says nothing. The model is one
+// of the ways the engine finds the foot, so this teaches it what the other ways agreed on, on real floors and skin.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,7 +13,55 @@ import puppeteer from "puppeteer-core";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const IMAGES = Number(process.env.IMAGES || 600), HIDDEN = 12, EPOCHS = 8;
+const IMAGES = Number(process.env.IMAGES || 600), HIDDEN = 12, EPOCHS = 8, REAL_PER_FRAME = 1400;
+
+// ---------- Real frames, labelled by the engine's outline ----------
+const eng = await import(path.join(ROOT, "core/engine.js"));
+const real = { X: [], Y: [], valX: [], valY: [], frames: 0 };
+const unb64 = s => new Uint8Array(Buffer.from(s, "base64"));
+function grow(m, w, h, r, val) {  // dilate (val 1) or erode (val 0) by r steps of the 4-neighbourhood
+  let cur = m;
+  for (let k = 0; k < r; k++) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) {
+      const n = [cur[i], x > 0 ? cur[i - 1] : val, x < w - 1 ? cur[i + 1] : val, y > 0 ? cur[i - w] : val, y < h - 1 ? cur[i + w] : val];
+      out[i] = val ? Math.max(...n) : Math.min(...n);
+    }
+    cur = out;
+  }
+  return cur;
+}
+let seed = 777;
+const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+for (const file of process.argv.slice(2)) {
+  const text = fs.readFileSync(file, "utf8");
+  const scans = file.endsWith(".jsonl") ? text.split("\n").filter(Boolean).map(l => JSON.parse(l).scan.scan) : [JSON.parse(text)];
+  for (const d of scans) {
+    const frames = [...(d.uploads || []).flatMap(u => u.stills || []), ...(d.samples || [])];
+    for (const fr of frames) {
+      const px = unb64(fr.rgba), w = fr.w, h = fr.h, n = w * h;
+      const a = eng.analyzePixels(px, w, h, { minToes: 1 });
+      if (!a.ok) continue;
+      const { L, A, B } = eng._training.toLab(px, n), g = a.geo;
+      const feats = eng._training.footFeatures(L, A, B, w, h, eng._training.floorShadows(L, A, B, w, h));
+      const inside = grow(g.mask, w, h, 3, 0), near = grow(g.mask, w, h, 6, 1), len = g.umax - g.umin;
+      const label = new Int8Array(n).fill(-1);  // 1 foot, 0 floor, -1 unsure
+      for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) {
+        if (inside[i]) label[i] = 1;
+        else if (!near[i] && (x - g.cx) * g.ex + (y - g.cy) * g.ey > g.umin + 0.02 * len) label[i] = 0;
+      }
+      const toVal = real.frames++ % 7 === 0, F = 10;
+      for (let s = 0; s < REAL_PER_FRAME; s++) {
+        let i, want = s % 2 === 0 ? 1 : 0;
+        for (let tries = 0; tries < 60; tries++) { i = Math.floor(rand() * n); if (label[i] === want) break; }
+        if (label[i] !== want) continue;
+        (toVal ? real.valX : real.X).push(Array.from(feats.slice(i * F, i * F + F)));
+        (toVal ? real.valY : real.Y).push(want);
+      }
+    }
+  }
+}
+if (real.frames) console.log(`real feet: ${real.frames} frames, ${real.X.length} pixels to train on, ${real.valX.length} held out`);
 
 // The browser imports the real modules, so serve the repo.
 const server = http.createServer((req, res) => {
@@ -25,7 +76,7 @@ const page = await browser.newPage();
 page.on("console", m => console.log(m.text()));
 await page.goto(base + "/package.json");
 
-const net = await page.evaluate(async (base, IMAGES, HIDDEN, EPOCHS) => {
+const net = await page.evaluate(async (base, IMAGES, HIDDEN, EPOCHS, real) => {
   const cam = await import(base + "/sdk/sample-camera.js");
   const eng = await import(base + "/core/engine.js");
   const { toLab, footFeatures, floorShadows } = eng._training;
@@ -60,6 +111,10 @@ const net = await page.evaluate(async (base, IMAGES, HIDDEN, EPOCHS) => {
     }
     if (k % 100 === 99) console.log(`drew ${k + 1}/${IMAGES} images`);
   }
+  for (const x of real.X) X.push(x);
+  for (const y of real.Y) Y.push(y);
+  for (const x of real.valX) valX.push(x);
+  for (const y of real.valY) valY.push(y);
   // A 10 → HIDDEN → 1 network, leaky ReLU, trained with Adam on log-loss.
   const H = HIDDEN, W1 = new Float32Array(H * F).map(() => (rand() - 0.5) * 0.6), b1 = new Float32Array(H), W2 = new Float32Array(H).map(() => (rand() - 0.5) * 0.6);
   let b2 = 0;
@@ -89,17 +144,19 @@ const net = await page.evaluate(async (base, IMAGES, HIDDEN, EPOCHS) => {
       params.forEach((P, pi) => { for (let q = 0; q < P.length; q++) { const gq = grads[pi][q] / bs; m[pi][q] = 0.9 * m[pi][q] + 0.1 * gq; vv[pi][q] = 0.999 * vv[pi][q] + 0.001 * gq * gq; P[q] -= lr * (m[pi][q] / (1 - 0.9 ** step)) / (Math.sqrt(vv[pi][q] / (1 - 0.999 ** step)) + 1e-8); } });
       const gq = gb2 / bs; mb2 = 0.9 * mb2 + 0.1 * gq; vb2 = 0.999 * vb2 + 0.001 * gq * gq; b2 -= lr * (mb2 / (1 - 0.9 ** step)) / (Math.sqrt(vb2 / (1 - 0.999 ** step)) + 1e-8);
     }
-    console.log(`epoch ${ep + 1}: pixel accuracy ${(accuracy(X, Y) * 100).toFixed(1)}% train, ${(accuracy(valX, valY) * 100).toFixed(1)}% held out`);
+    const nv = valX.length - real.valX.length;
+    console.log(`epoch ${ep + 1}: pixel accuracy ${(accuracy(X, Y) * 100).toFixed(1)}% train, ${(accuracy(valX.slice(0, nv), valY.slice(0, nv)) * 100).toFixed(1)}% held out drawn${real.valX.length ? `, ${(accuracy(real.valX, real.valY) * 100).toFixed(1)}% held out real` : ""}`);
   }
   const r = a => Array.from(a, x => Math.round(x * 1e4) / 1e4);
   return { F, H, W1: r(W1), b1: r(b1), W2: r(W2), b2: Math.round(b2 * 1e4) / 1e4, samples: X.length };
-}, base, IMAGES, HIDDEN, EPOCHS);
+}, base, IMAGES, HIDDEN, EPOCHS, real);
 
 await browser.close();
 server.close();
 const { samples, ...weights } = net;
-fs.writeFileSync(path.join(ROOT, "core/footnet.js"), `// FootNet weights: ${weights.F} inputs, ${weights.H} hidden units, ${weights.F * weights.H + 2 * weights.H + 1} numbers.
-// Written by scripts/train-footnet.mjs from ${IMAGES} drawn feet (${samples} pixels). Don't edit by hand; retrain.
+const OUT = process.env.OUT || path.join(ROOT, "core/footnet.js");  // OUT=… writes elsewhere, to judge a model before installing it
+fs.writeFileSync(OUT, `// FootNet weights: ${weights.F} inputs, ${weights.H} hidden units, ${weights.F * weights.H + 2 * weights.H + 1} numbers.
+// Written by scripts/train-footnet.mjs from ${IMAGES} drawn feet${real.frames ? ` and ${real.frames} real frames` : ""} (${samples} pixels). Don't edit by hand; retrain.
 export const FOOTNET = ${JSON.stringify(weights)};
 `);
-console.log("wrote core/footnet.js");
+console.log(`wrote ${path.relative(ROOT, OUT)}`);

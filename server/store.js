@@ -3,7 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 
+export const TESTER_DAYS = 30;
+const TESTER_MAX_BYTES = 400 * 1024 * 1024;
 const sha256 = s => crypto.createHash("sha256").update(s).digest("hex");
 const b64url = buf => Buffer.from(buf).toString("base64url");
 
@@ -104,5 +107,47 @@ export class Store {
     if (!fs.existsSync(file)) return false;
     fs.unlinkSync(file);
     return true;
+  }
+
+  // ---------- Tester scans ----------
+  // What the scanner saw in tester mode (frames, its live verdicts, the server's answers), kept to improve detection.
+  // Each scan is gzipped and encrypted with the data key; scans older than TESTER_DAYS are deleted, and nothing new is
+  // kept once TESTER_MAX_BYTES are used.
+  testerDir() {
+    const d = path.join(this.dir, "tester");
+    fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+    return d;
+  }
+  putTesterScan(scan) {
+    const d = this.testerDir(), now = Date.now();
+    let used = 0;
+    for (const f of fs.readdirSync(d)) {
+      const file = path.join(d, f), st = fs.statSync(file);
+      if (now - st.mtimeMs > TESTER_DAYS * 864e5) fs.unlinkSync(file);
+      else used += st.size;
+    }
+    const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", this.dataKey, iv);
+    c.setAAD(Buffer.from("tester"));
+    const ct = Buffer.concat([c.update(zlib.gzipSync(JSON.stringify(scan))), c.final()]);
+    if (used + ct.length > TESTER_MAX_BYTES) return false;
+    const name = `${new Date(now).toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(4).toString("hex")}.bin`;
+    fs.writeFileSync(path.join(d, name), Buffer.concat([iv, c.getAuthTag(), ct]), { mode: 0o600 });
+    return name;
+  }
+  // Every kept scan, oldest first: { name, scan }.
+  *testerScans() {
+    const d = this.testerDir();
+    for (const name of fs.readdirSync(d).filter(f => f.endsWith(".bin")).sort()) {
+      const buf = fs.readFileSync(path.join(d, name));
+      const dc = crypto.createDecipheriv("aes-256-gcm", this.dataKey, buf.subarray(0, 12));
+      dc.setAAD(Buffer.from("tester"));
+      dc.setAuthTag(buf.subarray(12, 28));
+      yield { name, scan: JSON.parse(zlib.gunzipSync(Buffer.concat([dc.update(buf.subarray(28)), dc.final()]))) };
+    }
+  }
+  deleteTesterScans() {
+    const d = this.testerDir(), files = fs.readdirSync(d);
+    for (const f of files) fs.unlinkSync(path.join(d, f));
+    return files.length;
   }
 }

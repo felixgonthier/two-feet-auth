@@ -64,8 +64,8 @@ export function decideMatch(view, frames, user) {
   };
   return { ok: true, score, ref: { w: f.w, h: f.h, gray: b64(grayFromRGBA(f.px, f.w, f.h)), mask: b64(g.mask), cx: g.cx, cy: g.cy, ex: g.ex, ey: g.ey, umin: g.umin, umax: g.umax } };
 }
-const NOT_LIVE = { ok: false, reason: "no_movement", message: "Your toes didn't follow the prompts. Keep your heel down, then lift your toes, put them down and lift them again when asked." };
-// Logging in, step 2: grey frames taken while the scanner asked for toes up, down, then up again (each frame says which
+const NOT_LIVE = { ok: false, reason: "no_movement", message: "Your toes didn't follow the prompts. Keep your heel down, then curl your toes, relax them and curl them again when asked." };
+// Logging in, step 2: grey frames taken while the scanner asked for toes curled, relaxed, then curled again (each frame says which
 // cue was showing). Against the matched frame, the toes must do each in turn while the ring of floor around them stays
 // put. A photo, however it's moved, tilted or lit, changes as one flat picture, and a finger crosses the ring.
 export function decideLive(ref, frames) {

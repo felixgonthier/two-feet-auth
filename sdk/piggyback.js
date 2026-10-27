@@ -23,6 +23,7 @@ const TICK = 130;            // ms between analysed frames
 const WIGGLE_PER_CUE = 5;    // grey frames sent per toe cue (the server takes up to 16 in all)
 const WIGGLE_TIMEOUT = 9000; // ms to follow the toe cues before sending what we have
 const MISS_GRACE = 3;        // odd frames in a row a hold survives
+const TESTER_PARTIAL = 15000; // ms of searching after which tester mode sends what it has so far, so a try that never ends is still seen
 // One camera stream per page, shared by every scanner on it: a phone doing step after step (enroll, then the first
 // login) asks for the camera once. Between scanners the stream is paused (its tracks disabled, so it sees nothing)
 // rather than closed, because Safari asks for permission again for every new stream; it's closed after CAMERA_KEEP.
@@ -48,14 +49,36 @@ function releaseCamera() {
 async function cameraPermission() {
   try { return (await navigator.permissions.query({ name: "camera" })).state; } catch { return null; }
 }
-// Browsers ask again on every visit unless the site is allowed for good; how to do that in this one.
+// Browsers ask for the camera on every visit until the site is allowed for good, which only the user can do (a page
+// can't): how to do it in this browser. Safari on iPhone keeps asking until it's set in Website Settings; other
+// browsers on iPhone can't remember it at all.
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 function allowTip() {
-  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  if (ios) return /CriOS|FxiOS|EdgiOS/.test(ua) ? null : "Asked for the camera every time? In Safari, tap aA in the address bar, then Website Settings › Camera › Allow.";
-  if (/Firefox\//.test(ua)) return "Asked for the camera every time? Tick “Remember this decision” when Firefox asks.";
-  if (/Edg\/|Chrome\//.test(ua)) return "Asked for the camera every time? Choose “Allow on every visit” when the browser asks, rather than “Allow this time”.";
-  if (/Safari\//.test(ua)) return "Asked for the camera every time? In Safari's menu: Settings for This Website › Camera › Allow.";
+  const ua = navigator.userAgent;
+  if (isIOS()) return /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)
+    ? "This browser asks for the camera every time and can't remember it on iPhone. Open this page in Safari instead, then tap aA in the address bar › Website Settings › Camera › Allow, and it won't ask again."
+    : "To stop the camera question for good: tap aA in the address bar › Website Settings › Camera › Allow. You only do this once.";
+  if (/Android/.test(ua)) return "To stop the camera question: when Chrome asks, choose “Allow while visiting the site”, not “Only this time”.";
+  if (/Firefox\//.test(ua)) return "To stop the camera question: tick “Remember this decision” when Firefox asks.";
+  if (/Edg\/|Chrome\//.test(ua)) return "To stop the camera question: choose “Allow on every visit” when the browser asks, not “Allow this time”.";
+  if (/Safari\//.test(ua)) return "To stop the camera question: Safari › Settings for This Website › Camera › Allow.";
   return null;
+}
+// Why the camera couldn't start, from getUserMedia's error: a short label and what to do about it in this browser.
+function cameraProblem(e) {
+  const ua = navigator.userAgent, name = e?.name || "";
+  if (!navigator.mediaDevices?.getUserMedia) return ["Camera unavailable", "This browser can't use the camera on this page. Open it in Safari or Chrome."];
+  if (/NotReadable|TrackStart|Abort/.test(name)) return ["Camera busy", "Another app or tab is using the camera. Close it, then tap Start camera again."];
+  if (/NotFound|DevicesNotFound|Overconstrained/.test(name)) return ["No camera", "No camera was found on this device."];
+  // Refused: by the user, by an earlier "Don't allow", or by the browser itself after several dismissed prompts.
+  if (isIOS()) return ["Camera blocked", /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)
+    ? "The camera was refused. Tap Start camera and allow it, or open this page in Safari."
+    : "Safari has blocked the camera for this site. Tap aA in the address bar › Website Settings › Camera › Allow, then tap Start camera again."];
+  if (/Android/.test(ua)) return ["Camera blocked", "The browser has blocked the camera for this site. Tap the icon left of the address › Permissions › Camera › Allow (or Reset permissions), then tap Start camera again. If it's already allowed there, check Android's settings: Apps › Chrome › Permissions › Camera."];
+  if (/Firefox\//.test(ua)) return ["Camera blocked", "Firefox has blocked the camera for this site. Click the crossed-out camera in the address bar, remove the block, then try again."];
+  if (/Edg\/|Chrome\//.test(ua)) return ["Camera blocked", "The browser has blocked the camera for this site. Click the icon left of the address › Camera › Allow, then try again."];
+  if (/Safari\//.test(ua)) return ["Camera blocked", "Safari has blocked the camera for this site. Safari › Settings for This Website › Camera › Allow, then try again."];
+  return ["Camera blocked", "The camera was refused. Allow camera access in your browser's settings for this site, then try again."];
 }
 // The phone looks at a smaller copy of each frame (about a third of the pixels) to guide and to see the foot hold
 // still; the full-size frames it sends are what the server decides on.
@@ -79,7 +102,17 @@ const VIBE = { lovely: 0.72, ugly: 0.3 };
 const RING = 26; // px the progress border's canvas overhangs the lens (room for its glow)
 // A phone-screen shape: a w × h rectangle with smooth (superellipse) corners of radius r, as points clockwise
 // from the top centre, plus the length all the way round.
+const shapeMemo = new Map();
 function screenShape(w, h, r = w * 0.2, steps = 480) {
+  // Drawn twice every animation frame for the same lens size; worked out once per size.
+  const key = `${w},${h},${r},${steps}`;
+  if (shapeMemo.has(key)) return shapeMemo.get(key);
+  const shape = buildScreenShape(w, h, r, steps);
+  if (shapeMemo.size > 8) shapeMemo.clear();
+  shapeMemo.set(key, shape);
+  return shape;
+}
+function buildScreenShape(w, h, r, steps) {
   const a = w / 2, b = h / 2, pts = [];
   let total = 0;
   for (let i = 0; i < steps; i++) {
@@ -267,6 +300,9 @@ button.alt:active { background: var(--pb-btn-glass); }
   button:hover, button:active, .redo:hover::before, .next:hover::after { transform: none; }
 }
 .save { color: var(--pb-accent); font-size: 13px; font-weight: 600; }
+/* How to stop the browser asking for the camera every time: shown before the camera starts, until the site is allowed. */
+.allow { order: -1; max-width: 36ch; margin: 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--pb-accent) 28%, transparent); border-radius: 14px;
+  background: color-mix(in srgb, var(--pb-accent) 8%, var(--pb-glass)); color: var(--pb-ink); font-size: 13.5px; line-height: 1.45; text-align: left; }
 .tip { max-width: 38ch; margin: 0; color: var(--pb-muted); font-size: 12.5px; line-height: 1.45; }
 .brand { display: inline-flex; align-items: center; gap: 6px; color: var(--pb-muted); font-size: 12px; font-weight: 600; }
 .brand img { width: 20px; height: 20px; }
@@ -284,6 +320,97 @@ async function packFrame(bytes, w, h, format, cue) {
   const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buf = new Uint8Array(await new Response(stream).arrayBuffer());
   return { w, h, format, data: b64(buf), ...(cue != null && { cue }) };
+}
+
+// ---------- Analysis off the main thread ----------
+// Looking at a frame takes 50–150 ms of pure JavaScript on a mid-range phone, and checking the frames to send takes
+// several times that. Done on the main thread, it stalls the camera preview and the ring; done in a worker, the page
+// stays smooth and a slow phone simply looks at fewer frames. The worker imports the same engine the page uses, from
+// the service (which serves /core/* with CORS); where that isn't possible (a single-file bundle, an old browser), the
+// same calls run inline, as before.
+const WORKER_SRC = `
+let eng, dec, prior = null, ref = null;
+const ready = (async () => { [eng, dec] = await Promise.all([import(BASE + "/core/engine.js"), import(BASE + "/core/decide.js")]); })();
+self.onmessage = async ({ data: m }) => {
+  try {
+    await ready;
+    let r = true;
+    if (m.op === "analyze") {
+      r = eng.analyzePixels(m.rgba, m.w, m.h, { prior: m.usePrior && prior?.length === m.w * m.h ? prior : null, minToes: m.minToes, fit: m.fit, quick: m.quick });
+      if (r.ok) prior = r.geo.mask;
+    } else if (m.op === "reset") prior = null;
+    else if (m.op === "order") r = dec.analyzeInOrder(m.frames);
+    else if (m.op === "ref") ref = { R: m.R, w: m.w, h: m.h, zone: eng.zones(m.geo), pivot: m.pivot };
+    else if (m.op === "motion") { const mo = eng.motionOf(m.G, ref.R, m.w, m.h, ref.zone, ref.pivot); r = { m: mo, state: eng.toeState(mo) }; }
+    self.postMessage({ id: m.id, r });
+  } catch (e) { self.postMessage({ id: m.id, error: String(e) }); }
+};`;
+const STALL = 5000;
+let workerFailed = false;   // once a worker has failed on this page, later scanners don't wait for another one
+class Analyst {
+  constructor(base) {
+    this.base = base;
+    this.inline = !base || typeof Worker === "undefined" || workerFailed;
+    this.prior = null;
+    this.ref = null;
+    this.calls = new Map();
+    this.id = 0;
+    if (!this.inline) {
+      try {
+        const url = URL.createObjectURL(new Blob([`const BASE = ${JSON.stringify(base)};${WORKER_SRC}`], { type: "text/javascript" }));
+        this.worker = new Worker(url, { type: "module" });
+        this.worker.onmessage = ({ data }) => {
+          const c = this.calls.get(data.id);
+          if (!c) return;
+          clearTimeout(c.timer);
+          this.calls.delete(data.id);
+          data.error ? c.reject(new Error(data.error)) : c.resolve(data.r);
+        };
+        // The worker couldn't start (or import the engine): everything from now on runs inline.
+        this.worker.onerror = e => { e.preventDefault?.(); this.fallback(); };
+      } catch { this.inline = true; }
+    }
+  }
+  fallback() {
+    if (this.inline) return;
+    this.inline = true;
+    workerFailed = true;
+    this.worker?.terminate();
+    // Carry on where the worker was: the toe check's reference frame, then whatever was waiting.
+    if (this.refMsg) this.run(this.refMsg);
+    for (const [id, c] of this.calls) { clearTimeout(c.timer); this.calls.delete(id); c.resolve(this.run(c.m)); }
+  }
+  // The engine call itself, for the inline path.
+  run(m) {
+    if (m.op === "analyze") {
+      const r = analyzePixels(m.rgba, m.w, m.h, { prior: m.usePrior && this.prior?.length === m.w * m.h ? this.prior : null, minToes: m.minToes, fit: m.fit, quick: m.quick });
+      if (r.ok) this.prior = r.geo.mask;
+      return r;
+    }
+    if (m.op === "reset") { this.prior = null; return true; }
+    if (m.op === "order") return analyzeInOrder(m.frames);
+    if (m.op === "ref") { this.ref = { R: m.R, w: m.w, h: m.h, zone: zones(m.geo), pivot: m.pivot }; return true; }
+    if (m.op === "motion") { const mo = motionOf(m.G, this.ref.R, m.w, m.h, this.ref.zone, this.ref.pivot); return { m: mo, state: toeState(mo) }; }
+    return true;
+  }
+  call(m, transfer = []) {
+    if (m.op === "ref") this.refMsg = m;
+    if (this.inline) return Promise.resolve(this.run(m));
+    return new Promise((resolve, reject) => {
+      const id = ++this.id;
+      // A worker that never answers (an engine import that hangs, a browser that stalls module workers) would stall
+      // the scanner: after STALL ms everything runs inline instead.
+      const timer = setTimeout(() => { if (this.calls.has(id)) this.fallback(); }, STALL);
+      this.calls.set(id, { resolve, reject, m, timer });
+      try { this.worker.postMessage({ id, ...m }, transfer); } catch { this.calls.delete(id); this.fallback(); resolve(this.run(m)); }
+    }).catch(e => { this.fallback(); return this.run(m); });
+  }
+  analyze(frame, opts) { return this.call({ op: "analyze", rgba: frame.rgba, w: frame.w, h: frame.h, ...opts }); }
+  reset() { return this.call({ op: "reset" }); }
+  order(frames) { return this.call({ op: "order", frames }); }
+  setRef(ref) { return this.call({ op: "ref", ...ref }); }
+  motion(G, w, h) { return this.call({ op: "motion", G, w, h }); }
+  close() { this.worker?.terminate(); this.worker = null; this.inline = true; }
 }
 
 // Talks to the verification service with the session token.
@@ -310,7 +437,9 @@ export class HttpBackend {
   }
   complete() { return this.call("POST", "/v1/session/complete"); }
   resetView(key) { return this.call("POST", `/v1/session/views/${key}/reset`); }
-  handoff(fresh = false) { return this.call("POST", "/v1/session/handoff", fresh ? { fresh: true } : undefined); }
+  // `modes`: { debug, tester }, carried over to the phone.
+  handoff(fresh = false, modes = {}) { return this.call("POST", "/v1/session/handoff", { ...(fresh && { fresh: true }), ...modes }); }
+  tester(scan) { return this.call("POST", "/v1/session/tester", { scan }); }
 }
 
 export class PiggybackAuth extends HTMLElement {
@@ -336,6 +465,7 @@ export class PiggybackAuth extends HTMLElement {
           <div class="text"><p class="eyebrow" hidden></p><h2 class="title">Scan your feet</h2><p class="how"></p></div>
           <ul class="done-list" hidden></ul>
           <div class="leaving" hidden><span></span><i></i></div>
+          <p class="allow" hidden></p>
           <p class="tip" hidden></p>
           <a class="save" href="#" hidden>Save this scan for debugging</a>
           <div class="actions">
@@ -349,7 +479,7 @@ export class PiggybackAuth extends HTMLElement {
         <span class="brand">${PIGGY}Secured by Piggyback</span>
       </div>`;
     const $ = s => this.shadowRoot.querySelector(s);
-    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
+    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), allow: $(".allow"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
     this.ui.start.addEventListener("click", () => {
       if (this.state.phase === "failed") return this.exitUrl && location.assign(this.exitUrl);
       return this.canHandOff ? this.handOff() : this.start();
@@ -377,20 +507,33 @@ export class PiggybackAuth extends HTMLElement {
     this.ui.start.textContent = this.canHandOff ? "Use my phone" : "Start camera";
     this.ui.alt.hidden = !this.canHandOff;
     this.renderSide();
+    // The analyst starts now, so its worker has loaded the engine by the time the camera is on.
+    this.analyst ||= new Analyst(this.getAttribute("analysis") === "inline" ? null : this.server);
     this.loadSession().then(() => { if (this.hasAttribute("autostart")) this.start(); });
+    this.adviseCamera();
   }
-  disconnectedCallback() { this.stop(); }
+  // If this device's camera will be used and the browser hasn't been told to allow it for good, say how, before it asks.
+  async adviseCamera() {
+    if (this.canHandOff || this.getAttribute("source") === "sample" || !navigator.mediaDevices?.getUserMedia) return;
+    const state = await cameraPermission();
+    // iPhone browsers may not answer the question; there, an unknown state means it will ask.
+    if (state === "granted" || state === "denied" || (state === null && !isIOS())) return;
+    const tip = allowTip();
+    if (tip) { this.ui.allow.textContent = tip; this.ui.allow.hidden = false; }
+  }
+  disconnectedCallback() { this.stop(); this.analyst?.close(); this.analyst = null; }
 
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true })); }
   // `exitUrl`: where to send the user when this sign-in can't go on (back to the app with access_denied).
   fail(code, message, exitUrl = null) {
+    if (this.hasAttribute("tester")) this.sendTester({ failed: code });
     this.stop();
     clearTimeout(this.pollTimer);
     // The status chip carries the label; out of tries, the line turns red and the lens shakes, like a wrong passcode.
-    const short = { camera_unavailable: "Camera blocked", session_failed: "Too many tries", invalid_session: "Sign-in expired" }[code] || "Something went wrong";
+    const short = { camera_unavailable: this.cameraLabel || "Camera blocked", session_failed: "Too many tries", invalid_session: "Sign-in expired" }[code] || "Something went wrong";
     const closed = code === "session_failed" || code === "invalid_session";
     const detail = code === "camera_unavailable"
-      ? `Allow camera access in your browser${this.canHandOff ? ", or use your phone instead" : ", or use another sign-in method"}.`
+      ? `${this.cameraHelp || "Allow camera access in your browser."}${this.canHandOff ? " Or use your phone instead." : ""}`
       : closed ? null : message;
     this.setStatus(short, closed ? "bad" : "", null, detail);
     delete this.ui.judge.dataset.ok;
@@ -406,7 +549,7 @@ export class PiggybackAuth extends HTMLElement {
       this.ui.start.textContent = `Back to ${app}`;
       this.ui.doneList.className = "done-list tips";
       this.ui.doneList.innerHTML = code === "session_failed"
-        ? ["A floor lighter or darker than your skin", "The whole foot inside the frame, toes at the top", "Once it matches, keep your heel down and follow the prompts: toes up, down, up"].map(t => `<li>${t}</li>`).join("")
+        ? ["A floor lighter or darker than your skin", "The whole foot inside the frame, toes at the top", "Once it matches, keep your heel down and follow the prompts: curl your toes, relax, curl again"].map(t => `<li>${t}</li>`).join("")
         : "";
       this.ui.doneList.hidden = code !== "session_failed";
       this.ui.leaving.hidden = true;
@@ -453,25 +596,34 @@ export class PiggybackAuth extends HTMLElement {
     } else {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error();
-        const asked = !camera.stream && (await cameraPermission()) === "prompt";
         this.stream = await openCamera();
-        const tip = asked && allowTip();
-        if (tip) { this.ui.tip.textContent = tip; this.ui.tip.hidden = false; }
         this.ui.video.srcObject = this.stream;
         this.ui.video.hidden = false;
-        await this.ui.video.play();
-      } catch {
-        return this.fail("camera_unavailable", "The camera isn't available. Allow camera access, or use another sign-in method.");
+        // A play() cut short by another load isn't a camera problem; the stream is there.
+        await this.ui.video.play().catch(e => { if (e?.name !== "AbortError") throw e; });
+      } catch (e) {
+        [this.cameraLabel, this.cameraHelp] = cameraProblem(e);
+        this.ui.allow.hidden = true;
+        return this.fail("camera_unavailable", this.cameraHelp);
       }
+    }
+    if (this.hasAttribute("tester")) {
+      const note = "Tester mode: what the camera sees during these scans is saved on the server for 30 days to improve foot detection.";
+      this.ui.tip.textContent = note;
+      this.ui.tip.hidden = false;
     }
     Object.assign(this.state, { running: true, i: this.views.findIndex(v => !v.ok) });
     this.ui.start.hidden = true;
+    // A worker for the analysis, unless the element says not to (analysis="inline") or the engine can't be reached.
+    this.analyst ||= new Analyst(this.getAttribute("analysis") === "inline" ? null : this.server);
+    this.pending = null;
     this.beginView();
     this.loop();
     this.animate();
   }
   stop() {
     this.state.running = false;
+    this.state.gen = (this.state.gen || 0) + 1;
     clearTimeout(this.pollTimer);
     clearTimeout(this.timer);
     cancelAnimationFrame(this.raf);
@@ -497,14 +649,19 @@ export class PiggybackAuth extends HTMLElement {
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const g = c.getContext("2d", { willReadFrequently: true });
     g.imageSmoothingQuality = "high";
-    g.drawImage(src, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h);
+    // The whole picture is kept as it was at this moment, since the frame to measure is cut from it once the
+    // analysis (which runs off the main thread, a few camera frames later) says where the foot is.
+    const full = (this.workFull ||= document.createElement("canvas"));
+    if (full.width !== sw || full.height !== sh) { full.width = sw; full.height = sh; }
+    full.getContext("2d").drawImage(src, 0, 0);
+    g.drawImage(full, roi.x, roi.y, roi.w, roi.h, 0, 0, w, h);
     this.shown = src;
     const sw2 = Math.max(16, Math.round(w * LIVE_SCALE)), sh2 = Math.max(16, Math.round(h * LIVE_SCALE));
     const s = (this.workSmall ||= document.createElement("canvas"));
     if (s.width !== sw2 || s.height !== sh2) { s.width = sw2; s.height = sh2; }
     const sg = s.getContext("2d", { willReadFrequently: true });
     sg.drawImage(c, 0, 0, sw2, sh2);
-    return { src, sw, sh, roi, small: { rgba: new Uint8Array(sg.getImageData(0, 0, sw2, sh2).data.buffer), w: sw2, h: sh2 } };
+    return { src: full, sw, sh, roi, small: { rgba: new Uint8Array(sg.getImageData(0, 0, sw2, sh2).data.buffer), w: sw2, h: sh2 } };
   }
   // Where to cut the measured frame: around the foot the live check found, with the foot running FOOT_FILL of the
   // frame's height (as at enrollment, so it's measured at the same scale), in the guide's proportions.
@@ -532,6 +689,35 @@ export class PiggybackAuth extends HTMLElement {
     return { rgba: new Uint8Array(g.getImageData(0, 0, w, h).data.buffer), w, h, box };
   }
 
+  // The ball of the foot in an outline: the widest slice of its front 60%, as a point on the axis and a width, in the
+  // outline's own pixels. It barely moves when the toes curl or lift, so it's what the toe step keeps in place.
+  footBall(g) {
+    const c = g.contour, len = g.umax - g.umin || 1, N = 32, lo = new Float64Array(N).fill(Infinity), hi = new Float64Array(N).fill(-Infinity);
+    for (let i = 0; i < c.length; i += 2) {
+      const dx = c[i] - g.cx, dy = c[i + 1] - g.cy, u = dx * g.ex + dy * g.ey, v = -dx * g.ey + dy * g.ex;
+      const b = Math.min(N - 1, Math.max(0, Math.floor(((u - g.umin) / len) * N)));
+      if (v < lo[b]) lo[b] = v;
+      if (v > hi[b]) hi[b] = v;
+    }
+    let best = Math.round(N * 0.4), width = 0;
+    for (let b = best; b < N; b++) if (hi[b] - lo[b] > width) { width = hi[b] - lo[b]; best = b; }
+    const u = g.umin + ((best + 0.5) / N) * len;
+    return { x: g.cx + u * g.ex, y: g.cy + u * g.ey, width: width || 1 };
+  }
+  // During the toe step: where to cut this frame so the ball of the foot sits where it did in the matched frame, at
+  // the same size. A phone that drifts closer, further or sideways after the match then cancels out, and only what the
+  // toes do is left for the motion check; a box that stayed put would see the whole foot move and call it blocked.
+  followBox(a, frame, w) {
+    const b = this.footBall(a.geo), kx = frame.roi.w / a.geo.w, ky = frame.roi.h / a.geo.h;
+    const scale = Math.max(0.5, Math.min(2, (b.width * kx) / (w.ball.width * (w.box.w / w.w))));
+    const bw = Math.min(frame.sw, w.box.w * scale), bh = Math.min(frame.sh, w.box.h * scale);
+    const bx = frame.roi.x + b.x * kx - (w.ball.x / w.w) * bw, by = frame.roi.y + b.y * ky - (w.ball.y / w.h) * bh;
+    const box = { x: Math.max(0, Math.min(frame.sw - bw, bx)), y: Math.max(0, Math.min(frame.sh - bh, by)), w: bw, h: bh };
+    // Half-way to the new place each frame: steady against jitter, quick enough to follow a hand.
+    const p = w.box;
+    return { x: (p.x + box.x) / 2, y: (p.y + box.y) / 2, w: (p.w + box.w) / 2, h: (p.h + box.h) / 2 };
+  }
+
   // ---------- The scan loop ----------
   // The status chip stays short ("No match · 4 tries left"); `detail` explains, in place of the line under the heading.
   setStatus(text, tone = "", meter = null, detail = null) {
@@ -554,8 +740,9 @@ export class PiggybackAuth extends HTMLElement {
   }
   beginView() {
     // A short warm-up while the camera settles its exposure, so nothing seen in the first moment counts.
-    Object.assign(this.state, { phase: "find", steady: [], wiggle: null, last: null, missSince: 0, missRun: 0, rejects: 0, nextSay: null, matchRef: null, warmUntil: performance.now() + 700 });
-    this.lastMask = null;
+    Object.assign(this.state, { phase: "find", steady: [], wiggle: null, last: null, missSince: 0, missRun: 0, rejects: 0, nextSay: null, matchRef: null, findSince: performance.now(), testerSent: 0, warmUntil: performance.now() + 700, gen: (this.state.gen || 0) + 1 });
+    this.pending = null;
+    this.analyst?.reset();
     this.ui.next.hidden = this.ui.redo.hidden = true;
     delete this.ui.judge.dataset.ok;
     this.mood("");
@@ -578,19 +765,35 @@ export class PiggybackAuth extends HTMLElement {
     };
     this.raf = requestAnimationFrame(step);
   }
+  // Hand the analyst a piece of work; `then` runs with its answer unless the view has moved on meanwhile. While one is
+  // out, ticks are skipped: a slow phone looks at fewer frames rather than falling behind.
+  defer(promise, then) {
+    const st = this.state, gen = st.gen;
+    this.pending = promise.then(r => { this.pending = null; if (st.running && st.gen === gen) then(r); }, () => { this.pending = null; });
+  }
   tick() {
     const st = this.state;
+    if (this.pending) return;
     const f = this.grab();
     if (!f) return;
     if (st.phase === "wiggle") return this.tickWiggle(f);
-    if (performance.now() < st.warmUntil) return this.setStatus("Getting ready…");
-    // The last good outline steadies this one (frame fusion); it's dropped once the frame size changes.
+    if (performance.now() < st.warmUntil) {
+      // Warm the analyst up on a frame that won't count, so the first real one isn't slowed by a cold start.
+      if (!this.warmed) { this.warmed = true; this.defer(this.analyst.analyze(f.small, { minToes: 1, fit: LIVE_FIT_ENTER, quick: true }), () => this.analyst.reset()); }
+      return this.setStatus("Getting ready…");
+    }
+    // The last good outline steadies this one (frame fusion); the analyst keeps it, and drops it once the frame size changes.
     // A hold starts inside LIVE_FIT_ENTER and then may drift out to the wider LIVE_FIT, so a foot right at the edge of the band
-    // doesn't flicker between "Hold still" and "Move closer".
-    const fs = f.small, prior = this.lastMask?.length === fs.w * fs.h ? this.lastMask : null;
-    const a = analyzePixels(fs.rgba, fs.w, fs.h, { prior, minToes: 1, fit: st.steady.length ? LIVE_FIT : LIVE_FIT_ENTER });
-    if (a.ok) { this.lastMask = a.geo.mask; st.missRun = 0; } else st.missRun = (st.missRun || 0) + 1;
-    if (this.hasAttribute("debug")) this.trace(a, fs);
+    // doesn't flicker between "Hold still" and "Move closer". `quick`: the slow learnt-colour method only when the quick ones fail.
+    this.defer(this.analyst.analyze(f.small, { usePrior: true, minToes: 1, fit: st.steady.length ? LIVE_FIT : LIVE_FIT_ENTER, quick: true }), a => this.seen(f, a));
+  }
+  seen(f, a) {
+    const st = this.state, fs = f.small;
+    if (st.phase !== "find") return;
+    st.missRun = a.ok ? 0 : (st.missRun || 0) + 1;
+    if (this.collecting) this.trace(a, fs);
+    // A long search in tester mode is worth seeing even if it never ends: send what there is so far every so often.
+    if (this.hasAttribute("tester") && performance.now() - Math.max(st.findSince, st.testerSent) > TESTER_PARTIAL) { st.testerSent = performance.now(); this.sendTester({ partial: true }); }
     // A few odd frames in a row (a passing shadow, motion blur, a jolt) don't undo the hold or change the message.
     if (!a.ok && st.steady.length && st.missRun <= MISS_GRACE) return;
     st.last = a.ok ? a : null;
@@ -642,49 +845,84 @@ export class PiggybackAuth extends HTMLElement {
     const pick = this.purpose === "enroll"
       ? Array.from({ length: ENROLL_SEND }, (_, i) => group[Math.round((i * (group.length - 1)) / (ENROLL_SEND - 1))])
       : group.slice(-VERIFY_HOLD);
-    const full = analyzeInOrder(pick.map(x => ({ w: x.f.w, h: x.f.h, px: x.f.rgba })));
-    const ok = pick.map((x, i) => ({ ...x, full: full[i] })).filter(x => x.full.ok);
-    if (ok.length < (this.purpose === "enroll" ? 2 : 1)) {
-      st.steady = st.steady.filter(x => !pick.includes(x));
-      st.rejects = (st.rejects || 0) + 1;
-      if (st.rejects >= 3) this.setStatus("Hold still…", "", 0, (full.find(r => !r.ok) || {}).message || null);
-      return;
-    }
-    st.rejects = 0;
-    // Logging in: send the still frames for the match first. The server compares the toes against the first frame
-    // that passes, so the wiggle here is measured against that same frame.
-    st.matchRef = ok[0];
-    return this.upload(ok.map(x => x.f));
+    this.defer(this.analyst.order(pick.map(x => ({ w: x.f.w, h: x.f.h, px: x.f.rgba }))), full => {
+      if (st.phase !== "find") return;
+      const ok = pick.map((x, i) => ({ ...x, full: full[i] })).filter(x => x.full.ok);
+      if (ok.length < (this.purpose === "enroll" ? 2 : 1)) {
+        st.steady = st.steady.filter(x => !pick.includes(x));
+        st.rejects = (st.rejects || 0) + 1;
+        if (st.rejects >= 3) this.setStatus("Hold still…", "", 0, (full.find(r => !r.ok) || {}).message || null);
+        return;
+      }
+      st.rejects = 0;
+      if (this.purpose === "enroll") return this.upload(ok.map(x => x.f));
+      // Logging in: the still frames go off to be matched, and the toe prompts start at once rather than after the
+      // reply. The server compares the toes against the first frame that passes, so the wiggle here is measured
+      // against that same frame; the toe frames are only sent once the server has said the foot matches. If it
+      // doesn't, the prompts stop and the usual "No match" shows.
+      st.matchRef = ok[0];
+      this.beginWiggle(ok[0]);
+      this.upload(ok.map(x => x.f), [], null, null, { match: true });
+    });
   }
-  // After a match: the toes follow cues (lift, down, lift), judged on each full-size frame against the matched one
-  // by the same code the server runs, so what passes here passes there.
+  beginWiggle(ref) {
+    const st = this.state, g = ref.full.geo;
+    st.wiggle = { w: ref.f.w, h: ref.f.h, box: ref.f.box, ball: this.footBall(g), step: 0, run: 0, blocked: 0, frames: [], seen: [], started: performance.now() };
+    st.matched = false;
+    st.onMatched = null;
+    this.analyst.setRef({ R: grayFromRGBA(ref.f.rgba, ref.f.w, ref.f.h), w: ref.f.w, h: ref.f.h, geo: g, pivot: [g.cx, g.cy] });
+    st.phase = "wiggle";
+    this.setStatus("Curl your toes", "good", 0, "Keep your heel on the floor and curl your toes under.");
+    this.renderSide();
+  }
+  // After a match: the toes follow cues (curl, relax, curl), judged on each full-size frame against the matched one
+  // by the same code the server runs, so what passes here passes there. Each frame is first cut around the foot where
+  // the live look finds it now (followBox), so the phone may drift; when the look fails, the last cut stands.
   tickWiggle(frame) {
-    const st = this.state, w = st.wiggle, f = this.cropAt(w.box, frame.src);
-    if (f.w !== w.w || f.h !== w.h) return;
-    const G = grayFromRGBA(f.rgba, f.w, f.h), m = motionOf(G, w.R, f.w, f.h, w.zone, w.pivot), state = toeState(m);
-    w.frames.push({ G, cue: w.step });
-    w.seen.push([w.step, state, Math.round(m.rest * 10) / 10, Math.round(m.toes * 10) / 10, Math.round(m.guard * 10) / 10]);
+    const st = this.state, w = st.wiggle;
+    const job = this.analyst.analyze(frame.small, { usePrior: true, minToes: 1, fit: LIVE_FIT, quick: true }).then(a => {
+      if (a.ok) w.box = this.followBox(a, frame, w);
+      const f = this.cropAt(w.box, frame.src);
+      if (f.w !== w.w || f.h !== w.h) return null;
+      const G = grayFromRGBA(f.rgba, f.w, f.h), cue = w.step;
+      return this.analyst.motion(G, f.w, f.h).then(r => ({ G, cue, r, f }));
+    });
+    this.defer(job, x => { if (x) this.toesSeen(x.G, x.cue, x.r.m, x.r.state, x.f); });
+  }
+  toesSeen(G, cue, m, state, f) {
+    const st = this.state, w = st.wiggle;
+    if (st.phase !== "wiggle") return;
+    w.frames.push({ G, cue });
+    w.seen.push([cue, state, Math.round(m.rest * 10) / 10, Math.round(m.toes * 10) / 10, Math.round(m.guard * 10) / 10]);
     w.blocked = state === "blocked" ? w.blocked + 1 : 0;
     w.run = state === CUES[w.step] ? w.run + 1 : 0;
     if (w.run >= LIVE.run) { w.step++; w.run = 0; }
     const done = w.step >= CUES.length;
     if (done || performance.now() - w.started > WIGGLE_TIMEOUT) {
-      // Send the last few frames of each cue, in order: each cue's run is at its end.
+      // Send the last few frames of each cue, in order: each cue's run is at its end. Not before the server has
+      // confirmed the match, though: until then, "Checking…".
       const keep = [];
       for (let c = 0; c < CUES.length; c++) keep.push(...w.frames.filter(x => x.cue === c).slice(-WIGGLE_PER_CUE));
-      return this.upload([], keep, f.w, f.h);
+      const send = () => this.upload([], keep, f.w, f.h);
+      if (st.matched) return send();
+      st.phase = "upload";
+      st.onMatched = send;
+      return this.setStatus("Checking…");
     }
     const [text, how] = [
-      ["Lift your toes", "Keep your heel on the floor and lift your toes up."],
-      ["Now put them down", "Toes back down on the floor."],
-      ["Lift them again", "Once more: heel down, toes up."],
+      ["Curl your toes", "Keep your heel on the floor and curl your toes under."],
+      ["Now relax them", "Toes flat on the floor again."],
+      ["Curl them again", "Once more: heel down, toes curled."],
     ][w.step];
     this.setStatus(text, "good", (w.step + w.run / LIVE.run) / CUES.length, w.blocked >= 2 ? "Something's moving near your toes. Keep hands and things out of the frame." : how);
   }
-  async upload(stills, grays = [], gw, gh) {
-    const st = this.state, view = this.views[st.i];
-    st.phase = "upload";
-    this.setStatus("Checking…");
+  // `match`: a login's still frames, sent while the toe prompts carry on; the reply only says whether the foot matched.
+  async upload(stills, grays = [], gw, gh, { match = false } = {}) {
+    const st = this.state, view = this.views[st.i], gen = st.gen;
+    if (!match) {
+      st.phase = "upload";
+      this.setStatus("Checking…");
+    }
     let r;
     try {
       r = await this.api.submitView(view.key, [
@@ -694,15 +932,17 @@ export class PiggybackAuth extends HTMLElement {
     } catch (e) {
       return this.fail(e.code, e.message);
     }
-    if (this.hasAttribute("debug")) this.record(view.key, stills, grays, gw, gh, r);
+    if (st.gen !== gen || !st.running) return;
+    if (this.collecting) {
+      this.record(view.key, stills, grays, gw, gh, r);
+      if (this.hasAttribute("tester")) this.sendTester();
+    }
     if (r.matched) {
-      // Step 1 passed: it's the right foot. Now the toes, against the frame the server matched first.
-      const ref = st.matchRef, g = ref.full.geo;
-      st.wiggle = { R: grayFromRGBA(ref.f.rgba, ref.f.w, ref.f.h), w: ref.f.w, h: ref.f.h, box: ref.f.box, zone: zones(g), pivot: [g.cx, g.cy], step: 0, run: 0, blocked: 0, frames: [], seen: [], started: performance.now() };
-      st.phase = "wiggle";
+      // Step 1 passed: it's the right foot. The toes are already being watched; if they've finished, send them now.
+      st.matched = true;
       this.react("yes", 900);
-      this.setStatus("Lift your toes", "good", 0, "Matched! Keep your heel on the floor and lift your toes up.");
-      return this.renderSide();
+      if (st.onMatched) { const send = st.onMatched; st.onMatched = null; return send(); }
+      return;
     }
     this.emit("piggyback-view", { key: view.key, ok: r.ok, reason: r.reason, message: r.message });
     if (!r.ok) {
@@ -740,31 +980,49 @@ export class PiggybackAuth extends HTMLElement {
     if (next < 0) return this.finish();
     setTimeout(() => { if (st.running) { st.i = next; this.beginView(); } }, 950);
   }
-  // ---------- Debug: save what the scanner saw, to tune it on real feet ----------
-  // With the debug attribute, the live check's verdicts, a few frames it couldn't make sense of, and every upload with
-  // the server's answer are kept in memory (never sent anywhere) until the user saves them as a file.
+  // ---------- Debug and tester mode: what the scanner saw, to tune it on real feet ----------
+  // The live check's verdicts, a few frames it couldn't make sense of, a frame a second whatever it decided, and every
+  // upload with the server's answer. With `debug` they stay in memory until the user saves them as a file; with
+  // `tester` they're also sent to the server after each try (POST /v1/session/tester), which keeps them for 30 days.
+  get collecting() { return this.hasAttribute("debug") || this.hasAttribute("tester"); }
+  get log() { return (this.scanLog ||= { trail: [], misses: [], samples: [], uploads: [] }); }
   trace(a, fs) {
-    const d = (this.scanLog ||= { trail: [], misses: [], uploads: [] }), now = Math.round(performance.now());
-    d.trail.push([now, a.ok ? "ok" : a.code]);
+    const d = this.log, now = Math.round(performance.now()), code = a.ok ? "ok" : a.code;
+    d.trail.push([now, code, this.state.status, Math.round((this.state.meter || 0) * 100)]);
     if (d.trail.length > 600) d.trail.shift();
     if (!a.ok && a.code !== "none" && now - (d.lastMiss || 0) > 1000) {
       d.lastMiss = now;
-      d.misses.push({ at: now, code: a.code, w: fs.w, h: fs.h, rgba: b64(fs.rgba) });
+      d.misses.push({ at: now, code, w: fs.w, h: fs.h, rgba: b64(fs.rgba) });
       if (d.misses.length > 8) d.misses.shift();
     }
+    if (now - (d.lastSample || 0) > 1000) {
+      d.lastSample = now;
+      d.samples.push({ at: now, code, w: fs.w, h: fs.h, rgba: b64(fs.rgba) });
+      if (d.samples.length > 12) d.samples.shift();
+    }
+  }
+  sendTester(extra = {}) {
+    const d = this.scanLog;
+    if (!d || !this.api?.tester || !(d.trail.length || d.uploads.length)) return;
+    const scan = { version: 1, ua: navigator.userAgent, mode: this.getAttribute("mode") || "page", view: this.views[this.state.i]?.key, ...extra, trail: d.trail, misses: d.misses, samples: d.samples, uploads: d.uploads };
+    // Each try is sent once; a debug save afterwards still has everything.
+    if (!this.hasAttribute("debug")) this.scanLog = null;
+    else this.scanLog = { ...d, trail: [], misses: [], samples: [], uploads: [], sent: (d.sent || []).concat([scan]) };
+    this.api.tester(scan).catch(() => {});
   }
   record(key, stills, grays, gw, gh, r) {
-    const d = (this.scanLog ||= { trail: [], misses: [], uploads: [] });
+    const d = this.log;
     d.uploads.push({
       at: Math.round(performance.now()), key, purpose: this.purpose, result: r, toes: grays.length ? this.state.wiggle?.seen : undefined,
       stills: stills.map(f => ({ w: f.w, h: f.h, rgba: b64(f.rgba) })),
       grays: grays.map(x => ({ w: gw, h: gh, cue: x.cue, gray: b64(x.G) })),
     });
     if (d.uploads.length > 6) d.uploads.shift();
-    this.ui.save.hidden = false;
+    if (this.hasAttribute("debug")) this.ui.save.hidden = false;
   }
   saveScan() {
-    const blob = new Blob([JSON.stringify({ version: 1, ua: navigator.userAgent, saved: new Date().toISOString(), ...this.scanLog })], { type: "application/json" });
+    const { sent = [], ...now } = this.scanLog || {};
+    const blob = new Blob([JSON.stringify({ version: 1, ua: navigator.userAgent, saved: new Date().toISOString(), ...now, earlier: sent })], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `piggyback-scan-${Date.now()}.json`;
@@ -860,7 +1118,7 @@ export class PiggybackAuth extends HTMLElement {
     this.frozen = null;
     delete this.ui.judge.dataset.ok;
     let h;
-    try { h = await this.api.handoff(fresh); } catch (e) { return this.fail(e.code, e.message); }
+    try { h = await this.api.handoff(fresh, { debug: this.hasAttribute("debug"), tester: this.hasAttribute("tester") }); } catch (e) { return this.fail(e.code, e.message); }
     this.ui.start.hidden = true;
     this.ui.alt.hidden = false;
     this.ui.fresh.hidden = !h.attached;
@@ -875,7 +1133,7 @@ export class PiggybackAuth extends HTMLElement {
       return;
     }
     // Demos pass the drawn sample feet along, so the phone page uses them too.
-    const extra = [this.getAttribute("source") === "sample" && `source=sample&who=${encodeURIComponent(this.getAttribute("sample-who") || "you")}`, this.hasAttribute("debug") && "debug=1"].filter(Boolean);
+    const extra = [this.getAttribute("source") === "sample" && `source=sample&who=${encodeURIComponent(this.getAttribute("sample-who") || "you")}`, this.hasAttribute("debug") && "debug=1", this.hasAttribute("tester") && "tester=1"].filter(Boolean);
     const sample = extra.length ? `#${extra.join("&")}` : "";
     this.handoffUrl = h.url + sample;
     this.qr = qrEncode(this.handoffUrl);
@@ -921,7 +1179,7 @@ export class PiggybackAuth extends HTMLElement {
     }
     if (st.phase === "done") {
       if (phone) return ["You can put your phone down", "Your computer is finishing the sign-in."];
-      if (enroll) return ["You're all set", "Next time you sign in, show one foot, then lift your toes a few times."];
+      if (enroll) return ["You're all set", "Next time you sign in, show one foot, then curl your toes when asked."];
       return ["Welcome back", "Your feet checked out. Nice toes."];
     }
     if (st.phase === "handoff") {
@@ -931,7 +1189,7 @@ export class PiggybackAuth extends HTMLElement {
     }
     if (view) return [view.title, view.how];
     return enroll ? ["Enroll your feet", "The camera looks at the top of each foot, one after the other. Socks off, on a plain floor."]
-      : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and lift your toes a few times.`];
+      : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and curl your toes when asked.`];
   }
   renderSide() {
     const st = this.state, view = st.running ? this.views[st.i] : null;

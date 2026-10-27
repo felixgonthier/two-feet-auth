@@ -2,7 +2,8 @@
 // It shows both integrations: redirect to the hosted page (/mfa) and the embedded element (/mfa/embedded).
 //
 //   FEET_URL=http://localhost:8787 CLIENT_ID=… CLIENT_SECRET=… node examples/demo-app/server.js
-//   Sign in with any username and the password "demo". Add ?sample=you|impostor|photo to /mfa to use drawn feet.
+//   Sign in with any username and the password "demo". Add ?sample=you|impostor|photo to /mfa to use drawn feet,
+//   ?debug to the sign-in page for the scanner's debug mode, ?tester for tester mode (scans sent to improve detection).
 import http from "node:http";
 import crypto from "node:crypto";
 import { verifyJwt } from "../../server/jwt.js";
@@ -119,12 +120,16 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, APP_URL);
   const sid = /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie || "")?.[1];
   const s = sid && sessions.get(sid);
+  // ?debug anywhere turns on the scanner's debug mode (outline, "Save this scan for debugging") for this sign-in;
+  // ?tester, tester mode (what the camera sees is sent to Piggyback to improve detection).
+  if (s && url.searchParams.has("debug")) s.debug = true;
+  if (s && url.searchParams.has("tester")) s.tester = true;
   try {
     if (req.method === "POST" && url.pathname === "/login") {
       const f = await readForm(req);
       if (!f.username || f.password !== "demo") return html(res, 401, page("Sign in", problem("Wrong password", `It's "demo".`, "/", "Try again")));
       const id = crypto.randomBytes(18).toString("base64url");
-      sessions.set(id, { user: f.username.trim().toLowerCase(), mfa: false });
+      sessions.set(id, { user: f.username.trim().toLowerCase(), mfa: false, debug: !!f.debug, tester: !!f.tester });
       const next = f.sample ? `/mfa?sample=${encodeURIComponent(f.sample)}` : "/mfa";
       return redirect(res, next, { "set-cookie": `sid=${id}; ${COOKIE}` });
     }
@@ -133,6 +138,8 @@ http.createServer(async (req, res) => {
       <p class="pb-text">A pretend bank that asks for your feet after your password. Any name works.</p>
       <label class="pb-label">Username<input class="pb-input" name="username" placeholder="Enter anything" autocomplete="username" required></label>
       <label class="pb-label">Password<input class="pb-input" name="password" type="password" placeholder="Enter demo" autocomplete="current-password" required></label>
+      ${url.searchParams.has("debug") ? `<input type="hidden" name="debug" value="1"><p class="pb-chip dot">Debug mode</p>` : ""}
+      ${url.searchParams.has("tester") ? `<input type="hidden" name="tester" value="1"><p class="pb-chip dot">Tester mode: your scans help improve foot detection</p>` : ""}
       ${url.searchParams.get("sample") ? `<input type="hidden" name="sample" value="${esc(url.searchParams.get("sample"))}"><p class="pb-chip dot">Using sample feet: ${esc(url.searchParams.get("sample"))}</p>` : ""}
       <button class="pb-btn block">Continue</button></form>`));
 
@@ -142,7 +149,7 @@ http.createServer(async (req, res) => {
       const { enrolled } = await feet("GET", `/v1/users/${encodeURIComponent(s.user)}`);
       s.state = crypto.randomBytes(16).toString("base64url");
       const r = await startSession(s.user, enrolled ? "verify" : "enroll", s.state);
-      return redirect(res, r.hosted_url + (s.sample ? `&source=sample&who=${encodeURIComponent(s.sample)}` : ""));
+      return redirect(res, r.hosted_url + (s.sample ? `&source=sample&who=${encodeURIComponent(s.sample)}` : "") + (s.debug ? "&debug=1" : "") + (s.tester ? "&tester=1" : ""));
     }
     if (url.pathname === "/mfa/callback") {
       // Piggyback sends people back with error=access_denied after too many tries (or if they cancel).
@@ -169,7 +176,7 @@ http.createServer(async (req, res) => {
       const sample = url.searchParams.get("sample");
       return html(res, 200, page("Second step", `${brand}<div><p class="pb-eyebrow">Step 2 of 2 · Feet</p><h1 class="pb-title">${enrolled ? "Verify" : "Enroll"} with your feet</h1><p class="pb-text">Signed in as ${esc(s.user)}.</p></div>
         <script type="module" src="${FEET_URL}/sdk/piggyback.js"></script>
-        <piggyback-auth server="${FEET_URL}" session-token="${esc(r.session_token)}" ${sample ? `source="sample" sample-who="${esc(sample)}"` : ""}></piggyback-auth>
+        <piggyback-auth server="${FEET_URL}" session-token="${esc(r.session_token)}" ${sample ? `source="sample" sample-who="${esc(sample)}"` : ""}${s.debug ? " debug" : ""}${s.tester ? " tester" : ""}></piggyback-auth>
         <script>
           document.querySelector("piggyback-auth").addEventListener("piggyback-complete", async e => {
             const res = await fetch("/mfa/exchange", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: e.detail.code }) });

@@ -134,7 +134,9 @@ const CSS = `
 .card { max-width: 420px; margin: 0 auto; display: grid; gap: 14px; justify-items: center; text-align: center; }
 .side { display: grid; gap: 14px; justify-items: center; }
 /* One column: the button sits right under the status, close to the lens. */
-.status { order: -2; } .actions { order: -1; }
+.status { order: -2; } .cue { order: -2; } .actions { order: -1; }
+/* What to do right now (the pose, the wiggle, what's in the way): under the status, close to the lens, one short line or two. */
+.cue { max-width: 30ch; margin: -4px 0 0; text-align: center; font-size: 14.5px; line-height: 1.4; color: var(--pb-ink); }
 /* The choices sit side by side as pills of one size: equal columns as wide as the longest label. */
 .actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; margin-top: 8px; }
 .eyebrow { margin: 0 0 2px; color: var(--pb-muted); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
@@ -442,6 +444,7 @@ export class PiggybackAuth extends HTMLElement {
         </div>
         <div class="side">
           <p class="status" aria-live="polite"><span class="st"></span></p>
+          <p class="cue" hidden></p>
           <div class="text"><p class="eyebrow" hidden></p><h2 class="title">Scan your feet</h2><p class="how"></p></div>
           <ul class="done-list" hidden></ul>
           <div class="leaving" hidden><span></span><i></i></div>
@@ -458,7 +461,7 @@ export class PiggybackAuth extends HTMLElement {
         <span class="brand">${PIGGY}Secured by Piggyback</span>
       </div>`;
     const $ = s => this.shadowRoot.querySelector(s);
-    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
+    this.ui = { video: $("video"), canvas: $(".lens canvas"), ring: $(".ring"), vf: $(".viewfinder"), st: $(".st"), status: $(".status"), judge: $(".judge"), title: $(".title"), how: $(".how"), start: $(".start"), alt: $(".camera"), doneList: $(".done-list"), which: $(".which"), leaving: $(".leaving"), tip: $(".tip"), cue: $(".cue"), save: $(".save"), fresh: $(".fresh"), next: $(".next"), redo: $(".redo"), eyebrow: $(".eyebrow") };
     this.ui.start.addEventListener("click", () => {
       if (this.state.phase === "failed") return this.exitUrl && location.assign(this.exitUrl);
       return this.canHandOff ? this.handOff() : this.start();
@@ -695,7 +698,18 @@ export class PiggybackAuth extends HTMLElement {
   // The status chip stays short ("No match · 4 tries left"); `detail` explains, in place of the line under the heading.
   setStatus(text, tone = "", meter = null, detail = null) {
     Object.assign(this.state, { status: text, tone, meter, detail });
-    if (this.ui.how.textContent !== (detail || this.baseHow || "")) this.ui.how.textContent = detail || this.baseHow || "";
+    this.renderCue();
+  }
+  // The line under the status chip: what to do right now. The status's own detail when it has one (what's in the
+  // way, the toe wiggle), otherwise the enrollment pose being taken. The paragraph under the heading keeps the
+  // general instructions for the step.
+  renderCue() {
+    const st = this.state, enroll = this.purpose === "enroll";
+    const pose = enroll && st.running && (st.phase === "find" || st.phase === "pause") && POSES.length > 1 ? POSES[st.pose || 0].how : "";
+    const text = st.detail || pose;
+    if (this.ui.cue.textContent !== text) this.ui.cue.textContent = text;
+    this.ui.cue.hidden = !text;
+    if (this.ui.how.textContent !== (this.baseHow || "")) this.ui.how.textContent = this.baseHow || "";
   }
   // The judge: a steady mood (idle or watching) plus short reactions that play over it.
   mood(base) {
@@ -931,8 +945,8 @@ export class PiggybackAuth extends HTMLElement {
       st.phase = "pose";
       st.last = null;
       this.react("yes", 900);
-      this.setStatus(`Saved · next: ${POSES[st.pose].sub.toLowerCase()}`, "good", 1, POSES[st.pose].how);
-      this.ui.next.textContent = "Go";
+      this.setStatus(`Pose ${st.pose} of ${POSES.length} saved`, "good", 1, `${POSES[st.pose].how} Then tap Ready.`);
+      this.ui.next.textContent = "Ready";
       this.ui.next.classList.remove("last");
       this.ui.redo.hidden = true;
       this.ui.next.hidden = false;
@@ -1171,7 +1185,6 @@ export class PiggybackAuth extends HTMLElement {
         : st.handoff === "claimed" ? "Follow the steps on your phone. This page carries on by itself once they're done."
         : "Point your phone's camera at the code and open the link. You'll scan your feet there, and this page carries on by itself."];
     }
-    if (view && enroll && POSES.length > 1) return [view.title, `${st.pose + 1} of ${POSES.length}, ${POSES[st.pose].sub.toLowerCase()}. ${st.pose ? POSES[st.pose].how : view.how}`];
     if (view) return [view.title, view.how];
     return enroll ? ["Enroll your feet", "The camera looks at the top of each foot, one after the other. Socks off, on a plain floor."]
       : ["Verify with your feet", `Show the camera ${this.views.length === 1 ? "the foot it asks for" : "the feet it asks for"}. When it matches, keep your heel down and wiggle your toes when asked.`];
@@ -1188,7 +1201,7 @@ export class PiggybackAuth extends HTMLElement {
       const pose = this.purpose === "enroll" && POSES.length > 1 ? POSES[st.pose || 0].sub.toLowerCase() : "top";
       this.ui.which.querySelector("span").innerHTML = st.phase === "review" ? `${side} foot <small>saved</small>` : `${side} foot <small>· ${pose}</small>`;
     }
-    this.ui.how.textContent = st.detail || this.baseHow;
+    this.renderCue();
     // "Step 1 of 2" while there's more than one foot to show; the line round the lens carries the progress itself.
     const at = st.running ? st.i : this.views.findIndex(v => !v.ok);
     const showStep = this.views.length > 1 && at >= 0 && st.phase !== "done" && st.phase !== "failed" && !(st.phase === "handoff" && st.handoff !== "claimed");

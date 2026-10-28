@@ -60,7 +60,7 @@ const shadow = (page, sel) => page.evaluate(s => document.querySelector("piggyba
 // Enrollment stops after each foot so the user can check it; tests click "Next" unless a test reviews it by hand.
 const AUTO_NEXT = () => setInterval(() => {
   const next = document.querySelector("piggyback-auth")?.shadowRoot?.querySelector(".next:not([hidden])");
-  if (next && (!window.__manualReview || next.textContent === "Go")) next.click();
+  if (next && (!window.__manualReview || next.textContent === "Ready")) next.click();
 }, 250);
 const newPage = async (ctx = null) => {
   const page = await (ctx || (await browser.createBrowserContext())).newPage();

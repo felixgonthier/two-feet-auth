@@ -94,15 +94,15 @@ try {
   await a.page.evaluate(() => { window.__manualReview = true; });
   await pressStart(a.page);                                                     // enrollment
   const review = () => a.page.evaluate(() => document.querySelector("piggyback-auth").shadowRoot.querySelector(".next:not([hidden])")?.textContent || "");
-  await a.page.waitForFunction(() => document.querySelector("piggyback-auth").shadowRoot.querySelector(".next:not([hidden])"), { timeout: 60000 });
+  await a.page.waitForFunction(() => document.querySelector("piggyback-auth").state.phase === "review", { timeout: 90000 });
   check("after the left foot, enrollment waits for the user to check it", (await review()) === "Next", await review());
   await a.page.evaluate(() => document.querySelector("piggyback-auth").shadowRoot.querySelector(".redo").click());
   await a.page.waitForFunction(() => document.querySelector("piggyback-auth").state.phase === "find", { timeout: 15000 });
   await a.page.waitForFunction(() => document.querySelector("piggyback-auth").state.phase === "review", { timeout: 60000 });
   check("Redo takes the left foot again", (await review()) === "Next" && (await a.page.evaluate(() => document.querySelector("piggyback-auth").state.i)) === 0);
   await a.page.evaluate(() => { window.__manualReview = false; });
-  await a.page.waitForFunction(u => location.href.startsWith(u), { timeout: 60000 }, `${FEET}/hosted`);
-  await a.page.waitForNavigation({ timeout: 60000 });                           // → callback → new verify session
+  await a.page.waitForFunction(u => location.href.startsWith(u), { timeout: 90000 }, `${FEET}/hosted`);
+  await a.page.waitForNavigation({ timeout: 90000 });                           // → callback → new verify session
   await pressStart(a.page);                                                     // verification
   await a.page.waitForSelector("#claims", { timeout: 90000 });
   const claims = JSON.parse(await a.page.$eval("#claims", el => el.textContent));
@@ -135,7 +135,7 @@ try {
   const d = await login("bob@example.com", "you");
   await d.page.goto(`${APP}/mfa/embedded?sample=you`);
   await pressStart(d.page);                                                     // enrollment
-  await d.page.waitForNavigation({ timeout: 60000 });                           // reload → verify
+  await d.page.waitForNavigation({ timeout: 120000 });                          // reload → verify
   await pressStart(d.page);
   await d.page.waitForSelector("#claims", { timeout: 90000 });
   const bob = JSON.parse(await d.page.$eval("#claims", el => el.textContent));
@@ -188,7 +188,7 @@ try {
   // Enroll on first use, then verify, then return to the platform.
   async function scanThrough(page) {
     await pressStart(page);
-    await page.waitForNavigation({ timeout: 60000 });   // enrolled → verify step
+    await page.waitForNavigation({ timeout: 120000 });   // enrolled (three poses a foot) → verify step
     await pressStart(page);
     await untilUrl(page, `${IDP}/cb`);
   }

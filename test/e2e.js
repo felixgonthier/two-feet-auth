@@ -59,7 +59,8 @@ const shadow = (page, sel) => page.evaluate(s => document.querySelector("piggyba
 // Scan with this browser's camera: on a computer that's the "Use this computer's camera" button under "Use my phone".
 // Enrollment stops after each foot so the user can check it; tests click "Next" unless a test reviews it by hand.
 const AUTO_NEXT = () => setInterval(() => {
-  if (!window.__manualReview) document.querySelector("piggyback-auth")?.shadowRoot?.querySelector(".next:not([hidden])")?.click();
+  const next = document.querySelector("piggyback-auth")?.shadowRoot?.querySelector(".next:not([hidden])");
+  if (next && (!window.__manualReview || next.textContent === "Go")) next.click();
 }, 250);
 const newPage = async (ctx = null) => {
   const page = await (ctx || (await browser.createBrowserContext())).newPage();

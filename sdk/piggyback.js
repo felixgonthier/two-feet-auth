@@ -925,13 +925,18 @@ export class PiggybackAuth extends HTMLElement {
       return;
     }
     if (r.next_pose != null) {
-      // One pose saved; the same foot from the next place, after a beat.
+      // One pose saved. The same foot from the next place, once the user says go: the lens leans the outline into
+      // that pose, the chip names it, and the line under the heading says how.
       st.pose = r.next_pose;
+      st.phase = "pose";
+      st.last = null;
       this.react("yes", 900);
-      this.setStatus("Saved", "good", 1, POSES[st.pose].how);
-      st.phase = "pause";
-      setTimeout(() => { if (st.running) this.beginView(); }, 1100);
-      return;
+      this.setStatus(`Saved · next: ${POSES[st.pose].sub.toLowerCase()}`, "good", 1, POSES[st.pose].how);
+      this.ui.next.textContent = "Go";
+      this.ui.next.classList.remove("last");
+      this.ui.redo.hidden = true;
+      this.ui.next.hidden = false;
+      return this.renderSide();
     }
     view.ok = true;
     const lovely = st.vibe >= VIBE.lovely;
@@ -1018,6 +1023,7 @@ export class PiggybackAuth extends HTMLElement {
   }
   nextView() {
     this.ui.next.hidden = this.ui.redo.hidden = true;
+    if (this.state.phase === "pose") return this.beginView();
     this.frozen = null;
     const next = this.views.findIndex(v => !v.ok);
     if (next < 0) return this.finish();
@@ -1174,12 +1180,13 @@ export class PiggybackAuth extends HTMLElement {
     const st = this.state, view = st.running ? this.views[st.i] : null;
     [this.ui.title.textContent, this.baseHow] = this.sideText(view);
     // In the lens: which foot to show now (or which one was just saved).
-    const lensView = st.phase === "find" || st.phase === "wiggle" || st.phase === "upload" || st.phase === "review" ? view : null;
+    const lensView = st.phase === "find" || st.phase === "pose" || st.phase === "wiggle" || st.phase === "upload" || st.phase === "review" ? view : null;
     this.ui.which.hidden = !lensView;
     if (lensView) {
       const side = lensView.side === "L" ? "Left" : "Right";
       this.ui.which.querySelector("b").textContent = lensView.side;
-      this.ui.which.querySelector("span").innerHTML = st.phase === "review" ? `${side} foot <small>saved</small>` : `${side} foot <small>· top</small>`;
+      const pose = this.purpose === "enroll" && POSES.length > 1 ? POSES[st.pose || 0].sub.toLowerCase() : "top";
+      this.ui.which.querySelector("span").innerHTML = st.phase === "review" ? `${side} foot <small>saved</small>` : `${side} foot <small>· ${pose}</small>`;
     }
     this.ui.how.textContent = st.detail || this.baseHow;
     // "Step 1 of 2" while there's more than one foot to show; the line round the lens carries the progress itself.
@@ -1241,6 +1248,7 @@ export class PiggybackAuth extends HTMLElement {
     const a = st.running ? st.last : null;
     if (this.qr) this.drawQr(g, w, h);
     else if (st.phase === "handoff") this.drawFootGuide(g, gx, h * 0.06, gw, h * 0.88, this.views[Math.max(0, this.views.findIndex(v => !v.ok))], still ? 0 : t);
+    else if (st.phase === "pose") this.drawFootGuide(g, gx, h * 0.06, gw, h * 0.88, this.views[st.i], still ? 0 : t);
     else if (!a && (st.running || !src)) this.drawFootGuide(g, gx, h * 0.06, gw, h * 0.88, this.views[st.i], st.running && !still ? t : 0);
     // Where to wiggle: soft pink ripples at the toes during the toe step.
     // debug: the outline the scanner sees, and a dot where it thinks the toes are.
@@ -1349,13 +1357,20 @@ export class PiggybackAuth extends HTMLElement {
     g.fill();
   }
   // Soft outline of the foot the step asks for, mirrored for left and right.
-  // It breathes gently while the camera looks.
+  // It breathes gently while the camera looks. For the second and third enrollment poses it leans the way the phone
+  // should: rocking into the pose while the user reads about it, then held there while the foot is looked for.
   drawFootGuide(g, rx, ry, rw, rh, view, t) {
     const fh = rh * 0.9, k = fh / 80, cx = rx + rw / 2, cy = ry + rh / 2;
-    const flip = view?.side === "L";
+    const flip = view?.side === "L", st = this.state;
     const breathe = t ? 0.5 + 0.5 * Math.sin(t / 700) : 0.5;
+    const pose = this.purpose === "enroll" ? st.pose || 0 : 0;
+    const lean = !pose ? 0 : st.phase === "pose" && t ? 0.5 - 0.5 * Math.cos(t / 450) : 1;
     g.save();
     g.translate(cx, cy);
+    // Tilted towards you: the foot is seen more from the ankle side, so it looks shorter and a touch wider.
+    if (pose === 1) g.transform(1 + 0.06 * lean, 0, 0, 1 - 0.24 * lean, 0, fh * 0.05 * lean);
+    // Tilted outwards: seen from the small-toe side, so it looks narrower and leans over.
+    if (pose === 2) g.transform(1 - 0.2 * lean, 0, (flip ? -0.18 : 0.18) * lean, 1, 0, 0);
     g.scale(flip ? -k : k, k);
     g.translate(-20, -40);
     g.lineWidth = 2 / k;

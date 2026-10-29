@@ -705,7 +705,9 @@ export class PiggybackAuth extends HTMLElement {
   // general instructions for the step.
   renderCue() {
     const st = this.state, enroll = this.purpose === "enroll";
-    const pose = enroll && st.running && (st.phase === "find" || st.phase === "pause") && POSES.length > 1 ? POSES[st.pose || 0].how : "";
+    const view = st.running ? this.views[st.i] : null, side = view?.side === "L" ? "left" : "right";
+    const pose = enroll && view && (st.phase === "find" || st.phase === "pause") && POSES.length > 1
+      ? (st.pose ? `Same ${side} foot. ` : `Your ${side} foot. `) + POSES[st.pose || 0].how : "";
     const text = st.detail || pose;
     if (this.ui.cue.textContent !== text) this.ui.cue.textContent = text;
     this.ui.cue.hidden = !text;
@@ -945,7 +947,7 @@ export class PiggybackAuth extends HTMLElement {
       st.phase = "pose";
       st.last = null;
       this.react("yes", 900);
-      this.setStatus(`Pose ${st.pose} of ${POSES.length} saved`, "good", 1, `${POSES[st.pose].how} Then tap Ready.`);
+      this.setStatus(`Pose ${st.pose} of ${POSES.length} saved`, "good", 1, `Same ${view.side === "L" ? "left" : "right"} foot. ${POSES[st.pose].how} Then tap Ready.`);
       this.ui.next.textContent = "Ready";
       this.ui.next.classList.remove("last");
       this.ui.redo.hidden = true;

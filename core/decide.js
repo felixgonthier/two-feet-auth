@@ -15,8 +15,10 @@ export function analyzeInOrder(frames) {
 const otherSide = view => (view.side === "L" ? "right" : "left");
 
 // Enrollment: two or more steady still frames of the right foot, for one pose of it (POSES in engine.js).
-// `others` are templates just enrolled for the opposite foot's same view, to catch the same foot shown twice.
-export function decideEnroll(view, frames, others, pose = 0) {
+// `others` are templates just enrolled for the opposite foot's same view, to catch the same foot shown twice;
+// `mine` the ones already taken of this foot, since a pose that looks more like the other foot than like this foot's
+// earlier poses is the other foot again (a tilt alone never moves a foot that far).
+export function decideEnroll(view, frames, others, pose = 0, mine = null) {
   const shots = analyzeInOrder(frames.filter(f => f.format === "rgba"));
   const good = shots.filter(a => a.ok);
   if (good.length < 2) return { ok: false, reason: "no_foot", message: (shots.find(a => !a.ok) || {}).message || "No foot found." };
@@ -28,8 +30,9 @@ export function decideEnroll(view, frames, others, pose = 0) {
     if (agree.length > keep.length) keep = agree;
   }
   if (keep.length < 2) return { ok: false, reason: "unsteady", message: "Hold the foot still inside the frame." };
-  if (others && bestOf(others, keep[0].features) >= 0.86) {
-    return { ok: false, reason: "wrong_foot", message: `That looks like your ${otherSide(view)} foot.` };
+  const vsOther = others?.length ? bestOf(others, keep[0].features) : 0;
+  if (vsOther >= 0.86 || (mine?.length && vsOther >= 0.7 && vsOther > bestOf(mine, keep[0].features) + 0.1)) {
+    return { ok: false, reason: "wrong_foot", message: `That looks like your ${otherSide(view)} foot. Show the ${view.side === "L" ? "left" : "right"} one.` };
   }
   return { ok: true, templates: keep.map(a => ({ ...a.features, pose })) };
 }

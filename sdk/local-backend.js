@@ -75,7 +75,7 @@ export class LocalBackend {
     const view = viewByKey[key], st = (this.state[key] ||= { ok: false, attempts: 0 });
     let r;
     if (this.purpose === "enroll") {
-      r = decideEnroll(view, frames, this.pending[view.otherKey], pose ?? 0);
+      r = decideEnroll(view, frames, this.pending[view.otherKey], pose ?? 0, this.pending[key]);
       if (r.ok) {
         this.pending[key] = [...(this.pending[key] || []).filter(t => t.pose !== (pose ?? 0)), ...r.templates];
         if (pose !== null && pose + 1 < POSES.length) return { ok: true, key, pose, next_pose: pose + 1, poses: POSES.length };

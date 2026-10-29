@@ -382,7 +382,7 @@ export function createApp({ dataDir, publicUrl, dataKey, allowSample = false, te
       let r;
       // Enrollment takes POSES.length poses of each foot, one upload each (`pose`); a client that sends none is done in one.
       const pose = Number.isInteger(body.pose) && body.pose >= 0 && body.pose < POSES.length ? body.pose : null;
-      if (s.purpose === "enroll") r = decideEnroll(view, frames, s.pending[view.otherKey], pose ?? 0);
+      if (s.purpose === "enroll") r = decideEnroll(view, frames, s.pending[view.otherKey], pose ?? 0, s.pending[view.key]);
       else if (stills && grays) r = decideVerify(view, frames, user);
       else if (stills) {
         r = decideMatch(view, frames, user);
